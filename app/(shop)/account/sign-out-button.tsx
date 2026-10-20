@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { Button } from "@/components/ui/button";
 import { signOut } from "@/lib/auth/client";
 
 export function SignOutButton() {
@@ -9,8 +10,8 @@ export function SignOutButton() {
   const [pending, startTransition] = useTransition();
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
       disabled={pending}
       onClick={async () => {
         await signOut();
@@ -19,9 +20,8 @@ export function SignOutButton() {
           router.refresh();
         });
       }}
-      className="rounded-md border px-3 py-2 text-sm font-medium disabled:opacity-60"
     >
       {pending ? "Signing out…" : "Sign out"}
-    </button>
+    </Button>
   );
 }

@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { signUp } from "@/lib/auth/client";
 import { MIN_PASSWORD_LENGTH, signUpSchema } from "@/lib/validation/auth";
-
-// PLACEHOLDER STYLING. Phase 1 defines the token layer and restyles this.
-// Do not treat any class name here as a design decision.
 
 export function SignUpForm({ next }: { next: string }) {
   const router = useRouter();
@@ -45,42 +45,36 @@ export function SignUpForm({ next }: { next: string }) {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-6 p-6">
-      <h1 className="font-semibold text-2xl">Create an account</h1>
+      <h1 className="font-semibold text-2xl tracking-tight">
+        Create an account
+      </h1>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="name" className="text-sm">
-            Name
-          </label>
-          <input
+          <Label htmlFor="name">Name</Label>
+          <Input
             id="name"
             name="name"
             type="text"
             autoComplete="name"
             required
-            className="rounded-md border px-3 py-2"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="email" className="text-sm">
-            Email
-          </label>
-          <input
+          <Label htmlFor="email">Email</Label>
+          <Input
             id="email"
             name="email"
             type="email"
             autoComplete="email"
             required
-            className="rounded-md border px-3 py-2"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="password" className="text-sm">
-            Password
-          </label>
-          <input
+          <Label htmlFor="password">Password</Label>
+          <Input
             id="password"
             name="password"
             type="password"
@@ -88,31 +82,29 @@ export function SignUpForm({ next }: { next: string }) {
             required
             minLength={MIN_PASSWORD_LENGTH}
             aria-describedby="password-hint"
-            className="rounded-md border px-3 py-2"
           />
-          <p id="password-hint" className="text-xs opacity-70">
+          <p id="password-hint" className="text-tertiary-text text-xs">
             At least {MIN_PASSWORD_LENGTH} characters.
           </p>
         </div>
 
         {error ? (
-          <p role="alert" className="text-red-600 text-sm">
+          <p role="alert" className="text-critical text-sm">
             {error}
           </p>
         ) : null}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md border px-3 py-2 font-medium disabled:opacity-60"
-        >
+        <Button type="submit" size="lg" block disabled={pending}>
           {pending ? "Creating account…" : "Create account"}
-        </button>
+        </Button>
       </form>
 
-      <p className="text-sm">
+      <p className="text-secondary-text text-sm">
         Already have an account?{" "}
-        <Link href="/sign-in" className="underline">
+        <Link
+          href="/sign-in"
+          className="text-accent-text underline underline-offset-4"
+        >
           Sign in
         </Link>
       </p>

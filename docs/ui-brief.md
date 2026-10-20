@@ -107,12 +107,38 @@ Constraints this direction inherits from AGENTS.md, which it must not violate:
 - Both themes are designed. Dark mode is not the light ramp inverted; elevation
   in dark reads through surface lightness, not through shadow.
 
-### Still open — resolve at the start of Phase 1
+### Resolved during the token build
 
-1. **Typeface.** Not chosen. Geist currently sits in `app/layout.tsx` as an
-   explicit placeholder from the shadcn preset.
-2. **Exact color ramp.** The direction is set; the specific hues are not.
-   Needs to be built light-first and dark-first in parallel, not converted.
-3. **Reference points.** Still the most useful missing input — sites whose feel
-   is right, and sites that read as generic. Propose a palette and typeface
-   pairing for sign-off rather than asking cold.
+- **Typeface: Manrope** for UI and display, **JetBrains Mono** for prices,
+  SKUs, order numbers and tracking codes. Both variable, so two font files.
+- **Palette:** desaturated cool neutral base at hue ~258, warm amber accent at
+  hue ~70. Every token is declared once with `light-dark()`.
+- **Shape: controls are pills.** `--radius-control: 9999px` is shared by every
+  interactive control so buttons, inputs, chips and selects agree. Panels use
+  1.5–2.5rem. Tight radii were the main reason the first pass read as boxy.
+- **Skeletons are layout-shaped**, not grey bars, and sweep rather than pulse.
+  `ProductCardSkeleton` is pixel-identical to `ProductCard`.
+
+### Verified, not asserted
+
+`lib/design/tokens.test.ts` parses `app/globals.css` and fails the build if:
+
+- body text drops below 4.5:1, or focus rings and control borders below 3:1,
+  in either theme, on any surface
+- any token falls outside the sRGB gamut and would be silently clipped
+- the dark ramp stops ascending, which is how "dark mode is designed, not
+  inverted" stays true
+- the `<meta name="theme-color">` hexes drift from `--surface-0`
+
+### Admin panel
+
+Deliberately stock shadcn: monochrome, flat, small radius. Implemented as a
+`.theme-admin` token override rather than a second component library — the same
+Button renders warm and pill-shaped on the storefront and square and
+monochrome inside the admin. Status colours stay coloured there, because a
+failed payout has to read as failed.
+
+### Still open
+
+**Reference points.** Sites whose feel is right, and sites that read as
+generic. Still the most useful missing input.

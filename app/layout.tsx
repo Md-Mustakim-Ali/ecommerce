@@ -1,26 +1,52 @@
-import type { Metadata } from "next";
-import { Geist } from "next/font/google";
-import { cn } from "@/lib/utils";
+import type { Metadata, Viewport } from "next";
+import { JetBrains_Mono, Manrope } from "next/font/google";
+import { themeClass } from "@/lib/theme";
+import { getTheme } from "@/lib/theme.server";
 import "./globals.css";
 
-// Typeface is a Phase 1 decision (AGENTS.md open decision #4). Geist is the
-// shadcn preset default and a placeholder, not a choice.
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
+});
+
+// Prices, SKUs, order numbers, tracking codes. Not for prose.
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: {
-    default: "Marketplace",
-    template: "%s · Marketplace",
-  },
+  title: { default: "Marketplace", template: "%s · Marketplace" },
   description: "A multi-vendor marketplace.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export const viewport: Viewport = {
+  // Both entries, so the browser chrome matches whichever theme is active.
+  // These must equal --surface-0; a literal is unavoidable because the browser
+  // paints its chrome before any CSS is parsed. lib/design/tokens.test.ts pins
+  // them so they cannot drift.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f7fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f141a" },
+  ],
+  // No maximum-scale: pinch-zoom is an accessibility requirement, not a bug.
+  width: "device-width",
+  initialScale: 1,
+};
+
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const theme = await getTheme();
+
   return (
-    // suppressHydrationWarning is for the Phase 1 theme script, which sets the
-    // light/dark class on <html> before paint.
-    <html lang="en" suppressHydrationWarning className={cn(geist.variable)}>
-      <body className="font-sans antialiased">{children}</body>
+    <html
+      lang="en"
+      className={`${manrope.variable} ${jetbrainsMono.variable} ${themeClass(theme)}`}
+    >
+      <body className="min-h-dvh bg-surface-0 font-sans text-primary-text">
+        {children}
+      </body>
     </html>
   );
 }
