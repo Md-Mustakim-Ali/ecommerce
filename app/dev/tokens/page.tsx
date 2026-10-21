@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import {
-  ProductCard,
-  type ProductCardData,
-} from "@/components/shop/product-card";
+import { ProductCard } from "@/components/shop/product-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +12,7 @@ import {
   ProductDetailSkeleton,
   TableSkeleton,
 } from "@/components/ui/skeleton";
+import type { ProductListItem } from "@/lib/catalog/queries";
 import { getTheme } from "@/lib/theme.server";
 
 export const metadata: Metadata = { title: "Tokens" };
@@ -27,44 +25,58 @@ export const metadata: Metadata = { title: "Tokens" };
  * Check it in light, dark, and system, and at 320px width.
  */
 
-const DEMO_PRODUCTS: ProductCardData[] = [
+const DEMO_PRODUCTS: ProductListItem[] = [
   {
+    id: "demo-1",
     slug: "merino-overshirt",
     title: "Merino wool overshirt, unlined",
     storeName: "Northmark Supply",
+    storeSlug: "northmark-supply",
+    brandName: "Northmark",
     priceCents: 18900,
     compareAtCents: 24900,
-    currency: "USD",
-    tone: "linear-gradient(150deg, oklch(0.72 0.09 250), oklch(0.42 0.11 268))",
     stock: 12,
+    imageUrl: null,
+    blurDataUrl: null,
   },
   {
+    id: "demo-2",
     slug: "walnut-desk-tray",
     title: "Walnut desk tray",
     storeName: "Oakline",
+    storeSlug: "oakline",
+    brandName: "Oakline",
     priceCents: 6400,
-    currency: "USD",
-    tone: "linear-gradient(150deg, oklch(0.78 0.1 70), oklch(0.48 0.12 52))",
+    compareAtCents: null,
     stock: 3,
+    imageUrl: null,
+    blurDataUrl: null,
   },
   {
+    id: "demo-3",
     slug: "field-notebook",
     title: "Field notebook, dot grid, 3-pack",
     storeName: "Paper & Press",
+    storeSlug: "paper-and-press",
+    brandName: null,
     priceCents: 2200,
-    currency: "USD",
-    tone: "linear-gradient(150deg, oklch(0.76 0.09 155), oklch(0.44 0.1 168))",
+    compareAtCents: null,
     stock: 0,
+    imageUrl: null,
+    blurDataUrl: null,
   },
   {
+    id: "demo-4",
     slug: "linen-cushion",
     title: "Washed linen cushion cover",
     storeName: "Halden Home",
+    storeSlug: "halden-home",
+    brandName: "Halden",
     priceCents: 4500,
     compareAtCents: 5900,
-    currency: "USD",
-    tone: "linear-gradient(150deg, oklch(0.8 0.07 20), oklch(0.5 0.12 12))",
     stock: 28,
+    imageUrl: null,
+    blurDataUrl: null,
   },
 ];
 

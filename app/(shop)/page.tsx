@@ -1,57 +1,81 @@
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ProductGrid } from "@/components/shop/product-grid";
 import { Button } from "@/components/ui/button";
-import { getSession } from "@/lib/auth/guards";
-import { getTheme } from "@/lib/theme.server";
-
-// Placeholder. The storefront home page is Phase 2/3 work; this exists so the
-// app has a runnable entry point.
+import { getCategoryTree, listProducts } from "@/lib/catalog/queries";
 
 export default async function HomePage() {
-  const [session, theme] = await Promise.all([getSession(), getTheme()]);
+  const [newest, tree] = await Promise.all([
+    listProducts({ sort: "newest", perPage: 8 }),
+    getCategoryTree(),
+  ]);
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-8 p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="font-semibold text-3xl tracking-tight">Marketplace</h1>
-          <p className="text-secondary-text text-sm">
-            The design system is in place. The storefront is not built yet.
+    <div className="mx-auto flex max-w-7xl flex-col gap-12 px-4 py-8 sm:px-6 sm:py-12">
+      {/*
+        The one deliberate non-user-triggered moment on the site, per
+        AGENTS.md. An ambient wash rather than an entrance animation.
+      */}
+      <section className="ambient relative overflow-hidden rounded-2xl border border-border px-6 py-14 sm:px-12 sm:py-20">
+        <div className="flex max-w-xl flex-col gap-5">
+          <h1 className="font-semibold text-3xl leading-tight tracking-tight sm:text-5xl">
+            Everything, from every seller, in one cart.
+          </h1>
+          <p className="text-lg text-secondary-text">
+            Independent stores, one checkout. Buy from four of them at once and
+            pay once.
           </p>
+          <div className="flex flex-wrap gap-3">
+            <Button size="lg" render={<Link href="/search" />}>
+              Start browsing
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              render={<Link href="/dashboard" />}
+            >
+              Sell here
+            </Button>
+          </div>
         </div>
-        <ThemeToggle value={theme} />
-      </div>
+      </section>
 
-      {session ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-secondary-text text-sm">
-            Signed in as{" "}
-            <span className="text-primary-text">{session.user.email}</span>
-          </p>
-          <Button render={<Link href="/account" />}>Go to account</Button>
+      <section className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="font-semibold text-xl tracking-tight">
+            Browse by category
+          </h2>
         </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <Button size="lg" block render={<Link href="/sign-up" />}>
-            Create an account
-          </Button>
-          <Button
-            size="lg"
-            block
-            variant="outline"
-            render={<Link href="/sign-in" />}
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {tree.map((node) => (
+            <li key={node.id}>
+              <Link
+                href={`/c/${node.slug}`}
+                className="elevate flex h-full flex-col justify-between gap-6 rounded-xl bg-surface-1 p-5"
+              >
+                <span className="font-medium">{node.name}</span>
+                <span className="text-secondary-text text-xs">
+                  {node.children.length} sections
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="font-semibold text-xl tracking-tight">Just listed</h2>
+          <Link
+            href="/search?sort=newest"
+            className="inline-flex items-center gap-1 text-accent-text text-sm underline-offset-4 hover:underline"
           >
-            Sign in
-          </Button>
+            See all
+            <ArrowRight className="size-4" aria-hidden />
+          </Link>
         </div>
-      )}
-
-      <Link
-        href="/dev/tokens"
-        className="text-center text-sm text-tertiary-text underline underline-offset-4"
-      >
-        Design tokens
-      </Link>
-    </main>
+        <ProductGrid products={newest.items} />
+      </section>
+    </div>
   );
 }

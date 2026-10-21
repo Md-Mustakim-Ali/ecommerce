@@ -1,5 +1,6 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
+import { isValidElement } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -79,6 +80,21 @@ const buttonVariants = cva(
   },
 );
 
+/**
+ * A button rendered as something other than <button> — almost always a Link —
+ * has no native button semantics, and Base UI warns loudly about it because
+ * the difference is real: forms, Enter/Space handling and the accessibility
+ * tree all change.
+ *
+ * Inferred here rather than left to every call site. `<Button render={<Link/>}>`
+ * is the common case for a styled navigation control, and requiring callers to
+ * also remember `nativeButton={false}` guarantees some of them will not.
+ */
+function rendersNativeButton(render: unknown): boolean {
+  if (!isValidElement(render)) return true;
+  return render.type === "button";
+}
+
 function Button({
   className,
   variant = "default",
@@ -89,8 +105,11 @@ function Button({
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, block, className }))}
       {...props}
+      // After the spread: an explicitly passed `nativeButton: undefined` would
+      // otherwise clobber the inferred value back to undefined.
+      nativeButton={props.nativeButton ?? rendersNativeButton(props.render)}
+      className={cn(buttonVariants({ variant, size, block, className }))}
     />
   );
 }
