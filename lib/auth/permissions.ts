@@ -14,7 +14,7 @@
  * old key unused until every stored role has been migrated off it.
  */
 
-export const PERMISSION_VOCABULARY_VERSION = 1;
+export const PERMISSION_VOCABULARY_VERSION = 2;
 
 export type PermissionScope = "store" | "platform";
 
@@ -237,6 +237,52 @@ const STORE_PERMISSIONS = [
     description: "See revenue, order volume and product performance.",
   },
 
+  {
+    key: "attribute.propose",
+    group: "Catalog",
+    label: "Propose attributes",
+    description: "Submit a new attribute or option value for platform review.",
+  },
+
+  // Content
+  {
+    key: "page.view",
+    group: "Content",
+    label: "View pages",
+    description: "See this store's custom pages, including drafts.",
+  },
+  {
+    key: "page.create",
+    group: "Content",
+    label: "Create pages",
+    description: "Build a new page for this store.",
+  },
+  {
+    key: "page.update",
+    group: "Content",
+    label: "Edit pages",
+    description: "Change the content and blocks on a page.",
+  },
+  {
+    key: "page.publish",
+    group: "Content",
+    label: "Publish pages",
+    description: "Make a page visible to buyers, or take it down.",
+  },
+  {
+    key: "page.delete",
+    group: "Content",
+    label: "Delete pages",
+    description: "Permanently remove a page.",
+  },
+  {
+    key: "placement.manage",
+    group: "Content",
+    label: "Manage banners and offers",
+    description:
+      "Create offer banners and cards, and choose which pages they appear on.",
+  },
+
   // Audit
   {
     key: "audit.view",
@@ -302,6 +348,26 @@ const PLATFORM_PERMISSIONS = [
     description: "Flag or remove a buyer review.",
   },
 
+  {
+    key: "platform.attribute.review",
+    group: "Moderation",
+    label: "Review attributes",
+    description: "Approve, reject or merge proposed attributes and values.",
+  },
+  {
+    key: "platform.page.manage",
+    group: "Content",
+    label: "Manage site pages",
+    description: "Create and edit pages that are not tied to a store.",
+  },
+  {
+    key: "platform.placement.manage",
+    group: "Content",
+    label: "Manage site-wide banners",
+    description:
+      "Create banners and offers, and target them at any page or group of pages.",
+    sensitive: true,
+  },
   {
     key: "platform.order.view",
     group: "Orders",

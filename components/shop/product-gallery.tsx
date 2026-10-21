@@ -22,9 +22,14 @@ type GalleryImage = {
 export function ProductGallery({
   images,
   title,
+  activeIndex,
+  onActiveIndexChange,
 }: {
   images: GalleryImage[];
   title: string;
+  /** Controlled from outside so the option picker can steer the gallery. */
+  activeIndex?: number;
+  onActiveIndexChange?: (index: number) => void;
 }) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
@@ -33,8 +38,20 @@ export function ProductGallery({
   const [selected, setSelected] = useState(0);
 
   const onSelect = useCallback(() => {
-    if (emblaApi) setSelected(emblaApi.selectedScrollSnap());
-  }, [emblaApi]);
+    if (!emblaApi) return;
+    const index = emblaApi.selectedScrollSnap();
+    setSelected(index);
+    onActiveIndexChange?.(index);
+  }, [emblaApi, onActiveIndexChange]);
+
+  // Follows the controlled index when something outside changes it — picking a
+  // colour, say. Guarded on the current snap so this cannot fight the user
+  // mid-swipe.
+  useEffect(() => {
+    if (!emblaApi || activeIndex === undefined) return;
+    if (emblaApi.selectedScrollSnap() === activeIndex) return;
+    emblaApi.scrollTo(activeIndex);
+  }, [emblaApi, activeIndex]);
 
   useEffect(() => {
     if (!emblaApi) return;

@@ -9,19 +9,34 @@ export type QuickViewData = {
   description: string | null;
   storeName: string;
   brandName: string | null;
+  variants: {
+    id: string;
+    sku: string;
+    priceCents: number;
+    compareAtPriceCents: number | null;
+    stock: number;
+    combination: Record<string, string>;
+  }[];
+  attributes: {
+    id: string;
+    slug: string;
+    name: string;
+    kind: string;
+    unit: string | null;
+    role: "variant" | "spec";
+    values: {
+      id: string;
+      value: string;
+      slug: string;
+      meta: Record<string, unknown>;
+    }[];
+  }[];
   images: {
     id: string;
     url: string;
     alt: string | null;
     blurDataUrl: string | null;
-  }[];
-  variants: {
-    id: string;
-    sku: string;
-    optionValues: Record<string, string>;
-    priceCents: number;
-    compareAtPriceCents: number | null;
-    stock: number;
+    tags: Record<string, string>;
   }[];
 };
 
@@ -50,14 +65,16 @@ export async function quickViewAction(input: {
       url: image.url,
       alt: image.alt,
       blurDataUrl: image.blurDataUrl,
+      tags: image.tags,
     })),
     variants: product.variants.map((variant) => ({
       id: variant.id,
       sku: variant.sku,
-      optionValues: variant.optionValues ?? {},
       priceCents: variant.priceCents,
       compareAtPriceCents: variant.compareAtPriceCents,
       stock: variant.stock,
+      combination: variant.combination,
     })),
+    attributes: product.attributes,
   };
 }

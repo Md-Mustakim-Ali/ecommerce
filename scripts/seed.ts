@@ -14,8 +14,13 @@ import { slugify } from "../lib/catalog/normalize.ts";
 import { proposeTerm } from "../lib/catalog/terms.ts";
 import { db } from "../lib/db/index.ts";
 import {
+  attributes,
+  attributeValues,
   brands,
   categories,
+  productAttributes,
+  productAttributeValues,
+  productImageAttributeValues,
   productImages,
   products,
   productTags,
@@ -27,19 +32,19 @@ import {
   tags,
   user,
   userPlatformRoles,
+  variantAttributeValues,
 } from "../lib/db/schema/index.ts";
 import { seedSystemRoles } from "../lib/db/seed/system-roles.ts";
 import {
   ADMIN,
+  ATTRIBUTES,
   BRANDS,
   BUYERS,
   CATEGORY_TREE,
-  COLOR_OPTIONS,
   PENDING_BRANDS,
   PENDING_TAGS,
   productTitle,
   SEED_PASSWORD,
-  SIZE_OPTIONS,
   STAFF,
   STORES,
   TAGS,
@@ -70,6 +75,8 @@ async function reset() {
   // and CASCADE handles the foreign keys in one statement.
   await db.execute(sql`
     truncate table
+      ${variantAttributeValues}, ${productAttributeValues}, ${productAttributes},
+      ${attributeValues}, ${attributes},
       ${productTags}, ${productVariants}, ${productImages}, ${products},
       ${brands}, ${tags}, ${categories},
       ${storeMemberRoles}, ${storeMembers}, ${stores},
@@ -236,6 +243,59 @@ async function main() {
   console.log(`  ${tagRows.length} tags approved`);
   console.log(`    proposals: ${describe(tagOutcomes)}`);
 
+  // Attributes. Global and deduplicated by slug, exactly like brands and tags,
+  // so the storefront can offer one Colour filter across the whole catalogue
+  // instead of one per store.
+  type SeededAttribute = {
+    id: string;
+    slug: string;
+    values: { id: string; value: string }[];
+  };
+  const attributeBySlug = new Map<string, SeededAttribute>();
+  const attributeById = new Map<string, SeededAttribute>();
+
+  for (const [position, definition] of ATTRIBUTES.entries()) {
+    const [attributeRow] = await db
+      .insert(attributes)
+      .values({
+        name: definition.name,
+        slug: slugify(definition.name),
+        kind: definition.kind,
+        isFilterable: definition.kind !== "text",
+        position,
+        status: "approved",
+        approvedBy: adminId,
+        approvedAt: new Date(),
+      })
+      .returning({ id: attributes.id });
+
+    const valueRows = await db
+      .insert(attributeValues)
+      .values(
+        definition.values.map((value, index) => ({
+          attributeId: attributeRow.id,
+          value: value.value,
+          slug: slugify(value.value),
+          meta: ("meta" in value ? value.meta : {}) as Record<string, unknown>,
+          position: index,
+          status: "approved" as const,
+        })),
+      )
+      .returning({ id: attributeValues.id, value: attributeValues.value });
+
+    const seeded: SeededAttribute = {
+      id: attributeRow.id,
+      slug: definition.slug,
+      values: valueRows,
+    };
+    attributeBySlug.set(definition.slug, seeded);
+    attributeById.set(attributeRow.id, seeded);
+  }
+
+  console.log(
+    `  ${ATTRIBUTES.length} attributes, ${ATTRIBUTES.reduce((n, a) => n + a.values.length, 0)} values`,
+  );
+
   const { leafIds, total: categoryTotal } = await seedCategories();
   console.log(`  ${categoryTotal} categories, ${leafIds.length} leaves`);
 
@@ -325,50 +385,179 @@ async function main() {
 
   console.log(`  ${productRows.length} products`);
 
-  // Variants, images and tags
-  const variantValues = [];
+  // Variants, images, tags and attributes
+  const variantValues: {
+    productId: string;
+    sku: string;
+    optionValues: Record<string, string>;
+    priceCents: number;
+    compareAtPriceCents: number | null;
+    stock: number;
+    weightGrams: number;
+    position: number;
+    /** Carried so the variant-attribute rows can be written after insert. */
+    combo: { attributeId: string; valueId: string }[];
+  }[] = [];
   const imageValues = [];
   const tagValues: { productId: string; tagId: string }[] = [];
+  const productAttrRows: {
+    productId: string;
+    attributeId: string;
+    role: "variant" | "spec";
+    position: number;
+  }[] = [];
+  const productAttrValueRows: {
+    productId: string;
+    attributeId: string;
+    valueId: string;
+  }[] = [];
 
   for (const [i, product] of productRows.entries()) {
-    const variantCount = between(1, 3);
     const basePrice = between(9, 320) * 100;
 
-    for (let v = 0; v < variantCount; v++) {
+    // Which attributes drive this product's variants. Roughly a fifth get the
+    // three-attribute treatment (RAM, storage, colour) so the seed exercises a
+    // phone-style matrix, not just size and colour.
+    const usesTechMatrix = i % 5 === 0;
+    const variantAttrSlugs = usesTechMatrix
+      ? ["ram", "storage", "colour"]
+      : ["size", "colour"];
+    const specAttrSlugs = usesTechMatrix
+      ? ["made-in"]
+      : ["material", "made-in"];
+
+    for (const [position, slug] of variantAttrSlugs.entries()) {
+      const attribute = attributeBySlug.get(slug);
+      if (!attribute) continue;
+      productAttrRows.push({
+        productId: product.id,
+        attributeId: attribute.id,
+        role: "variant",
+        position,
+      });
+    }
+    for (const [position, slug] of specAttrSlugs.entries()) {
+      const attribute = attributeBySlug.get(slug);
+      if (!attribute) continue;
+      productAttrRows.push({
+        productId: product.id,
+        attributeId: attribute.id,
+        role: "spec",
+        position: variantAttrSlugs.length + position,
+      });
+      // A spec attribute gets exactly one value, which is what makes it a spec.
+      const value = pick(attribute.values);
+      productAttrValueRows.push({
+        productId: product.id,
+        attributeId: attribute.id,
+        valueId: value.id,
+      });
+    }
+
+    // Two or three values offered per variant attribute.
+    const offered = variantAttrSlugs.map((slug) => {
+      const attribute = attributeBySlug.get(slug);
+      if (!attribute) return null;
+      const howMany = Math.min(attribute.values.length, between(2, 3));
+      const chosenValues = [...attribute.values]
+        .sort(() => random() - 0.5)
+        .slice(0, howMany);
+      for (const value of chosenValues) {
+        productAttrValueRows.push({
+          productId: product.id,
+          attributeId: attribute.id,
+          valueId: value.id,
+        });
+      }
+      return { attribute, values: chosenValues };
+    });
+
+    // The full cross product of what is offered...
+    let combos: { attributeId: string; valueId: string; label: string }[][] = [
+      [],
+    ];
+    for (const entry of offered) {
+      if (!entry) continue;
+      combos = combos.flatMap((combo) =>
+        entry.values.map((value) => [
+          ...combo,
+          {
+            attributeId: entry.attribute.id,
+            valueId: value.id,
+            label: value.value,
+          },
+        ]),
+      );
+    }
+
+    // ...minus some of it. Not every combination exists in reality — a phone
+    // may ship 12GB/512GB in blue but not 12GB/256GB in blue — and the schema
+    // represents that by simply not having a variant for it. Dropping around a
+    // fifth here means the storefront's "unavailable combination" handling is
+    // exercised by real data rather than assumed.
+    const surviving = combos.filter(() => random() > 0.2);
+    const finalCombos = surviving.length > 0 ? surviving : combos.slice(0, 1);
+
+    for (const [v, combo] of finalCombos.entries()) {
       variantValues.push({
         productId: product.id,
         sku: `SKU-${String(i).padStart(4, "0")}-${v}`,
-        // Annotated because the ternary otherwise widens `{}` into
-        // `{ size?: undefined }`, which is not a Record<string, string>.
-        optionValues: (variantCount === 1
-          ? {}
-          : {
-              size: SIZE_OPTIONS[v % SIZE_OPTIONS.length],
-              color: pick(COLOR_OPTIONS),
-            }) as Record<string, string>,
-        priceCents: basePrice + v * 500,
+        optionValues: Object.fromEntries(
+          combo.map((part) => [
+            attributeById.get(part.attributeId)?.slug ?? "option",
+            part.label,
+          ]),
+        ) as Record<string, string>,
+        // Per-combination pricing: more RAM or a larger size costs more, which
+        // is the point of pricing on the variant rather than the product.
+        priceCents: basePrice + v * between(300, 2500),
         // A quarter of variants carry a compare-at price so sale badges appear.
         compareAtPriceCents: random() < 0.25 ? basePrice + 4000 : null,
         // Some zero stock, so sold-out states are exercised by real data.
         stock: random() < 0.08 ? 0 : between(1, 60),
         weightGrams: between(80, 3000),
         position: v,
+        combo: combo.map((part) => ({
+          attributeId: part.attributeId,
+          valueId: part.valueId,
+        })),
       });
     }
 
     const hue = (i * 37) % 360;
-    for (let img = 0; img < between(1, 3); img++) {
-      imageValues.push({
-        productId: product.id,
-        url: `https://picsum.photos/seed/${product.id}-${img}/900/1125`,
-        alt: product.title,
-        position: img,
-        width: 900,
-        height: 1125,
-        blurDataUrl: `data:image/svg+xml;base64,${Buffer.from(
-          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 5"><rect width="4" height="5" fill="hsl(${hue} 25% 60%)"/></svg>`,
-        ).toString("base64")}`,
-      });
+
+    // One image per offered colour, tagged with that colour, so picking a
+    // colour on the product page swaps the photo. Plus one untagged image that
+    // acts as the default when nothing matches.
+    const colourEntry = offered.find((e) => e?.attribute.slug === "colour");
+    imageValues.push({
+      productId: product.id,
+      url: `https://picsum.photos/seed/${product.id}-main/900/900`,
+      alt: product.title,
+      position: 0,
+      width: 900,
+      height: 900,
+      blurDataUrl: `data:image/svg+xml;base64,${Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="hsl(${hue} 25% 60%)"/></svg>`,
+      ).toString("base64")}`,
+      tag: null as { attributeId: string; valueId: string } | null,
+    });
+
+    if (colourEntry) {
+      for (const [index, value] of colourEntry.values.entries()) {
+        imageValues.push({
+          productId: product.id,
+          url: `https://picsum.photos/seed/${product.id}-${value.id}/900/900`,
+          alt: `${product.title} in ${value.value}`,
+          position: index + 1,
+          width: 900,
+          height: 900,
+          blurDataUrl: `data:image/svg+xml;base64,${Buffer.from(
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1" fill="hsl(${(hue + index * 40) % 360} 30% 55%)"/></svg>`,
+          ).toString("base64")}`,
+          tag: { attributeId: colourEntry.attribute.id, valueId: value.id },
+        });
+      }
     }
 
     const chosen = new Set<string>();
@@ -383,18 +572,79 @@ async function main() {
       items.slice(i * size, i * size + size),
     );
 
-  for (const batch of chunk(variantValues, 500)) {
-    await db.insert(productVariants).values(batch);
+  // Variants are inserted with their combination carried alongside, so the
+  // variant_attribute_values rows can be written against the returned ids.
+  const variantAttrRows: {
+    variantId: string;
+    attributeId: string;
+    valueId: string;
+  }[] = [];
+
+  for (const batch of chunk(variantValues, 400)) {
+    const inserted = await db
+      .insert(productVariants)
+      .values(batch.map(({ combo: _combo, ...rest }) => rest))
+      .returning({ id: productVariants.id });
+
+    for (const [index, row] of inserted.entries()) {
+      for (const part of batch[index].combo) {
+        variantAttrRows.push({
+          variantId: row.id,
+          attributeId: part.attributeId,
+          valueId: part.valueId,
+        });
+      }
+    }
   }
-  for (const batch of chunk(imageValues, 500)) {
-    await db.insert(productImages).values(batch);
+
+  const imageTagRows: {
+    imageId: string;
+    attributeId: string;
+    valueId: string;
+  }[] = [];
+
+  for (const batch of chunk(imageValues, 400)) {
+    const inserted = await db
+      .insert(productImages)
+      .values(batch.map(({ tag: _tag, ...rest }) => rest))
+      .returning({ id: productImages.id });
+
+    for (const [index, row] of inserted.entries()) {
+      const tag = batch[index].tag;
+      if (tag) {
+        imageTagRows.push({
+          imageId: row.id,
+          attributeId: tag.attributeId,
+          valueId: tag.valueId,
+        });
+      }
+    }
+  }
+
+  for (const batch of chunk(imageTagRows, 500)) {
+    await db
+      .insert(productImageAttributeValues)
+      .values(batch)
+      .onConflictDoNothing();
   }
   for (const batch of chunk(tagValues, 500)) {
     await db.insert(productTags).values(batch).onConflictDoNothing();
   }
+  for (const batch of chunk(productAttrRows, 500)) {
+    await db.insert(productAttributes).values(batch).onConflictDoNothing();
+  }
+  for (const batch of chunk(productAttrValueRows, 500)) {
+    await db.insert(productAttributeValues).values(batch).onConflictDoNothing();
+  }
+  for (const batch of chunk(variantAttrRows, 500)) {
+    await db.insert(variantAttributeValues).values(batch).onConflictDoNothing();
+  }
 
   console.log(
-    `  ${variantValues.length} variants, ${imageValues.length} images, ${tagValues.length} product tags`,
+    `  ${variantValues.length} variants, ${imageValues.length} images (${imageTagRows.length} colour-tagged), ${tagValues.length} product tags`,
+  );
+  console.log(
+    `  ${productAttrRows.length} product-attribute links, ${variantAttrRows.length} variant combinations`,
   );
 
   // Tag names have to reach search_keywords too, and they are only known now

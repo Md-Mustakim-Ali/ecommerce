@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ProductGallery } from "@/components/shop/product-gallery";
-import { VariantSelector } from "@/components/shop/variant-selector";
+import { ProductDetail } from "@/components/shop/product-detail";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { getProductBySlug } from "@/lib/catalog/queries";
@@ -39,49 +38,53 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
         </Link>
       </nav>
 
+      <div className="flex flex-col gap-2">
+        {product.brandName ? (
+          <Link
+            href={`/search?brand=${product.brandSlug}`}
+            className="w-fit text-accent-text text-sm underline-offset-4 hover:underline"
+          >
+            {product.brandName}
+          </Link>
+        ) : null}
+        <h1 className="font-semibold text-2xl leading-tight tracking-tight sm:text-3xl">
+          {product.title}
+        </h1>
+        <p className="text-secondary-text text-sm">
+          Sold by <span className="text-primary-text">{product.storeName}</span>
+        </p>
+      </div>
+
+      <ProductDetail
+        title={product.title}
+        images={product.images.map((image) => ({
+          id: image.id,
+          url: image.url,
+          alt: image.alt,
+          blurDataUrl: image.blurDataUrl,
+          tags: image.tags,
+        }))}
+        attributes={product.attributes.map((attribute) => ({
+          id: attribute.id,
+          slug: attribute.slug,
+          name: attribute.name,
+          kind: attribute.kind,
+          unit: attribute.unit,
+          role: attribute.role,
+          values: attribute.values,
+        }))}
+        variants={product.variants.map((variant) => ({
+          id: variant.id,
+          sku: variant.sku,
+          priceCents: variant.priceCents,
+          compareAtPriceCents: variant.compareAtPriceCents,
+          stock: variant.stock,
+          combination: variant.combination,
+        }))}
+      />
+
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-        <ProductGallery
-          images={product.images.map((image) => ({
-            id: image.id,
-            url: image.url,
-            alt: image.alt,
-            blurDataUrl: image.blurDataUrl,
-          }))}
-          title={product.title}
-        />
-
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            {product.brandName ? (
-              <Link
-                href={`/search?brand=${product.brandSlug}`}
-                className="w-fit text-accent-text text-sm underline-offset-4 hover:underline"
-              >
-                {product.brandName}
-              </Link>
-            ) : null}
-
-            <h1 className="font-semibold text-2xl leading-tight tracking-tight sm:text-3xl">
-              {product.title}
-            </h1>
-
-            <p className="text-secondary-text text-sm">
-              Sold by{" "}
-              <span className="text-primary-text">{product.storeName}</span>
-            </p>
-          </div>
-
-          <VariantSelector
-            variants={product.variants.map((variant) => ({
-              id: variant.id,
-              sku: variant.sku,
-              optionValues: variant.optionValues ?? {},
-              priceCents: variant.priceCents,
-              compareAtPriceCents: variant.compareAtPriceCents,
-              stock: variant.stock,
-            }))}
-          />
-
           {product.description ? (
             <>
               <Separator />

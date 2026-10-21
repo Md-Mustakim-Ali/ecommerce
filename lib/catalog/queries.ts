@@ -1,8 +1,13 @@
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  attributes,
+  attributeValues,
   brands,
   categories,
+  productAttributes,
+  productAttributeValues,
+  productImageAttributeValues,
   productImages,
   products,
   productTags,
@@ -11,6 +16,7 @@ import {
   savedItems,
   stores,
   tags,
+  variantAttributeValues,
 } from "@/lib/db/schema";
 import { DEFAULT_PER_PAGE, type ProductFilters } from "./filters";
 
@@ -29,8 +35,14 @@ export type ProductListItem = {
   storeName: string;
   storeSlug: string;
   brandName: string | null;
+  /** Lowest variant price. */
   priceCents: number;
+  /** Highest variant price. Equal to priceCents when there is one price. */
+  maxPriceCents: number;
+  /** Lowest compare-at across variants, null when nothing is discounted. */
   compareAtCents: number | null;
+  /** Highest compare-at across variants. */
+  compareAtMaxCents: number | null;
   stock: number;
   imageUrl: string | null;
   blurDataUrl: string | null;
@@ -52,6 +64,12 @@ const priceAgg = db
   .select({
     productId: productVariants.productId,
     minPrice: sql<number>`min(${productVariants.priceCents})`.as("min_price"),
+    maxPrice: sql<number>`max(${productVariants.priceCents})`.as("max_price"),
+    // Both ends, so a discounted product can strike through the whole
+    // original range rather than a single number that was never the only price.
+    minCompare: sql<number>`min(${productVariants.compareAtPriceCents})`.as(
+      "min_compare",
+    ),
     maxCompare: sql<number>`max(${productVariants.compareAtPriceCents})`.as(
       "max_compare",
     ),
@@ -187,7 +205,9 @@ export async function listProducts(filters: ProductFilters = {}) {
       storeSlug: stores.slug,
       brandName: brands.name,
       priceCents: priceAgg.minPrice,
-      compareAtCents: priceAgg.maxCompare,
+      maxPriceCents: priceAgg.maxPrice,
+      compareAtCents: priceAgg.minCompare,
+      compareAtMaxCents: priceAgg.maxCompare,
       stock: priceAgg.totalStock,
       imageUrl: primaryImage.url,
       blurDataUrl: primaryImage.blurDataUrl,
@@ -261,27 +281,167 @@ export async function getProductBySlug(slug: string) {
   if (product.length === 0) return null;
   const row = product[0];
 
-  const [variants, images, productTagRows] = await Promise.all([
-    db
-      .select()
-      .from(productVariants)
-      .where(eq(productVariants.productId, row.id))
-      .orderBy(asc(productVariants.position)),
-    db
-      .select()
-      .from(productImages)
-      .where(eq(productImages.productId, row.id))
-      .orderBy(asc(productImages.position)),
-    db
-      .select({ name: tags.name, slug: tags.slug })
-      .from(productTags)
-      .innerJoin(tags, eq(tags.id, productTags.tagId))
-      .where(
-        and(eq(productTags.productId, row.id), eq(tags.status, "approved")),
-      ),
-  ]);
+  const [variants, images, productTagRows, variantCombos, imageTags, attrRows] =
+    await Promise.all([
+      db
+        .select()
+        .from(productVariants)
+        .where(eq(productVariants.productId, row.id))
+        .orderBy(asc(productVariants.position)),
+      db
+        .select()
+        .from(productImages)
+        .where(eq(productImages.productId, row.id))
+        .orderBy(asc(productImages.position)),
+      db
+        .select({ name: tags.name, slug: tags.slug })
+        .from(productTags)
+        .innerJoin(tags, eq(tags.id, productTags.tagId))
+        .where(
+          and(eq(productTags.productId, row.id), eq(tags.status, "approved")),
+        ),
+      // Which combination each variant is. The set of these rows IS the set of
+      // valid combinations — a pairing with no variant simply does not exist.
+      db
+        .select({
+          variantId: variantAttributeValues.variantId,
+          attributeId: variantAttributeValues.attributeId,
+          attributeSlug: attributes.slug,
+          valueId: variantAttributeValues.valueId,
+        })
+        .from(variantAttributeValues)
+        .innerJoin(
+          productVariants,
+          eq(productVariants.id, variantAttributeValues.variantId),
+        )
+        .innerJoin(
+          attributes,
+          eq(attributes.id, variantAttributeValues.attributeId),
+        )
+        .where(eq(productVariants.productId, row.id)),
+      // Image tags, so picking a colour can jump the gallery to that photo.
+      db
+        .select({
+          imageId: productImageAttributeValues.imageId,
+          attributeId: productImageAttributeValues.attributeId,
+          valueId: productImageAttributeValues.valueId,
+        })
+        .from(productImageAttributeValues)
+        .innerJoin(
+          productImages,
+          eq(productImages.id, productImageAttributeValues.imageId),
+        )
+        .where(eq(productImages.productId, row.id)),
+      db
+        .select({
+          attributeId: attributes.id,
+          slug: attributes.slug,
+          name: attributes.name,
+          kind: attributes.kind,
+          unit: attributes.unit,
+          role: productAttributes.role,
+          position: productAttributes.position,
+          valueId: attributeValues.id,
+          value: attributeValues.value,
+          valueSlug: attributeValues.slug,
+          valueMeta: attributeValues.meta,
+          valuePosition: attributeValues.position,
+        })
+        .from(productAttributes)
+        .innerJoin(attributes, eq(attributes.id, productAttributes.attributeId))
+        .innerJoin(
+          productAttributeValues,
+          and(
+            eq(productAttributeValues.productId, productAttributes.productId),
+            eq(
+              productAttributeValues.attributeId,
+              productAttributes.attributeId,
+            ),
+          ),
+        )
+        .innerJoin(
+          attributeValues,
+          eq(attributeValues.id, productAttributeValues.valueId),
+        )
+        .where(eq(productAttributes.productId, row.id))
+        .orderBy(
+          asc(productAttributes.position),
+          asc(attributeValues.position),
+        ),
+    ]);
 
-  return { ...row, variants, images, tags: productTagRows };
+  // Assemble the attribute definitions the product actually offers.
+  const attributeMap = new Map<
+    string,
+    {
+      id: string;
+      slug: string;
+      name: string;
+      kind: string;
+      unit: string | null;
+      role: "variant" | "spec";
+      values: {
+        id: string;
+        value: string;
+        slug: string;
+        meta: Record<string, unknown>;
+      }[];
+    }
+  >();
+
+  for (const attrRow of attrRows) {
+    let entry = attributeMap.get(attrRow.attributeId);
+    if (!entry) {
+      entry = {
+        id: attrRow.attributeId,
+        slug: attrRow.slug,
+        name: attrRow.name,
+        kind: attrRow.kind,
+        unit: attrRow.unit,
+        role: attrRow.role,
+        values: [],
+      };
+      attributeMap.set(attrRow.attributeId, entry);
+    }
+    if (!entry.values.some((v) => v.id === attrRow.valueId)) {
+      entry.values.push({
+        id: attrRow.valueId,
+        value: attrRow.value,
+        slug: attrRow.valueSlug,
+        meta: attrRow.valueMeta ?? {},
+      });
+    }
+  }
+
+  const combosByVariant = new Map<string, Record<string, string>>();
+  for (const combo of variantCombos) {
+    const existing = combosByVariant.get(combo.variantId) ?? {};
+    existing[combo.attributeId] = combo.valueId;
+    combosByVariant.set(combo.variantId, existing);
+  }
+
+  const tagsByImage = new Map<string, Record<string, string>>();
+  for (const tag of imageTags) {
+    const existing = tagsByImage.get(tag.imageId) ?? {};
+    existing[tag.attributeId] = tag.valueId;
+    tagsByImage.set(tag.imageId, existing);
+  }
+
+  return {
+    ...row,
+    variants: variants.map((variant) => ({
+      ...variant,
+      /** attributeId -> valueId. Empty for an option-less default variant. */
+      combination: combosByVariant.get(variant.id) ?? {},
+    })),
+    images: images.map((image) => ({
+      ...image,
+      /** attributeId -> valueId. Empty when the image is not option-specific. */
+      tags: tagsByImage.get(image.id) ?? {},
+    })),
+    tags: productTagRows,
+    attributes: [...attributeMap.values()],
+  };
 }
 
 export type CategoryNode = {

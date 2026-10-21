@@ -45,6 +45,9 @@ export function ProductCard({
   const discount = onSale
     ? Math.round((1 - product.priceCents / (product.compareAtCents ?? 1)) * 100)
     : 0;
+  // Combinations can be priced differently, so a single number would be a
+  // guess. Show the span the shopper will actually choose within.
+  const hasRange = product.maxPriceCents > product.priceCents;
 
   return (
     <PointerSurface className={cn("group rounded-xl", className)}>
@@ -130,15 +133,30 @@ export function ProductCard({
           </Link>
 
           <div className="mt-auto flex items-end justify-between gap-2 pt-2">
-            <div className="flex flex-col">
-              <span className="tabular font-semibold text-base leading-none">
-                {formatMoney(product.priceCents, "USD")}
-              </span>
+            {/*
+              The original range is struck through above the current one. With
+              per-combination pricing there is no single "was" price, so
+              crossing out one number would misstate the discount.
+            */}
+            <div className="flex flex-col gap-0.5">
               {onSale && product.compareAtCents !== null ? (
                 <span className="tabular text-tertiary-text text-xs line-through">
                   {formatMoney(product.compareAtCents, "USD")}
+                  {product.compareAtMaxCents !== null &&
+                  product.compareAtMaxCents > product.compareAtCents
+                    ? ` – ${formatMoney(product.compareAtMaxCents, "USD")}`
+                    : ""}
                 </span>
               ) : null}
+              <span className="tabular font-semibold text-base leading-none">
+                {formatMoney(product.priceCents, "USD")}
+                {hasRange ? (
+                  <span className="font-normal text-tertiary-text">
+                    {" – "}
+                    {formatMoney(product.maxPriceCents, "USD")}
+                  </span>
+                ) : null}
+              </span>
             </div>
 
             <QuickAdd

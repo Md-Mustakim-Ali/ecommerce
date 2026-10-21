@@ -241,3 +241,95 @@ export function productTitle(leafCategory: string, index: number): string {
 
 export const COLOR_OPTIONS = ["Navy", "Charcoal", "Sand", "Olive", "Rust"];
 export const SIZE_OPTIONS = ["S", "M", "L", "XL"];
+
+/**
+ * Global attributes.
+ *
+ * Deliberately includes one variant-driving pair (Size and Colour) and two
+ * spec-only attributes, so both roles are exercised by real data.
+ */
+export type AttributeFixture = {
+  slug: string;
+  name: string;
+  kind: "select" | "color" | "number" | "text";
+  role: "variant" | "spec";
+  values: { value: string; meta?: Record<string, unknown> }[];
+};
+
+export const ATTRIBUTES: AttributeFixture[] = [
+  {
+    slug: "size",
+    name: "Size",
+    kind: "select" as const,
+    role: "variant" as const,
+    values: [
+      { value: "XS" },
+      { value: "S" },
+      { value: "M" },
+      { value: "L" },
+      { value: "XL" },
+    ],
+  },
+  {
+    slug: "colour",
+    name: "Colour",
+    kind: "color" as const,
+    role: "variant" as const,
+    values: [
+      { value: "Navy", meta: { hex: "#1b2a4a" } },
+      { value: "Charcoal", meta: { hex: "#36393f" } },
+      { value: "Sand", meta: { hex: "#d8c8a9" } },
+      { value: "Olive", meta: { hex: "#5a6144" } },
+      { value: "Rust", meta: { hex: "#9c4a2f" } },
+    ],
+  },
+  {
+    slug: "material",
+    name: "Material",
+    kind: "select" as const,
+    role: "spec" as const,
+    values: [
+      { value: "Merino wool" },
+      { value: "Organic cotton" },
+      { value: "Solid oak" },
+      { value: "Stainless steel" },
+      { value: "Linen" },
+      { value: "Walnut" },
+    ],
+  },
+  {
+    slug: "ram",
+    name: "RAM",
+    kind: "select" as const,
+    role: "variant" as const,
+    values: [
+      { value: "8 GB", meta: { numeric: 8 } },
+      { value: "12 GB", meta: { numeric: 12 } },
+      { value: "16 GB", meta: { numeric: 16 } },
+    ],
+  },
+  {
+    slug: "storage",
+    name: "Storage",
+    kind: "select" as const,
+    role: "variant" as const,
+    values: [
+      { value: "128 GB", meta: { numeric: 128 } },
+      { value: "256 GB", meta: { numeric: 256 } },
+      { value: "512 GB", meta: { numeric: 512 } },
+    ],
+  },
+  {
+    slug: "made-in",
+    name: "Made in",
+    kind: "select" as const,
+    role: "spec" as const,
+    values: [
+      { value: "Portugal" },
+      { value: "Japan" },
+      { value: "Italy" },
+      { value: "Bangladesh" },
+      { value: "United Kingdom" },
+    ],
+  },
+];

@@ -53,6 +53,12 @@ export const STORE_ROLE_TEMPLATES: readonly SystemRole[] = [
       "customer.contact",
       "store.profile.update",
       "store.theme.update",
+      "attribute.propose",
+      "page.view",
+      "page.create",
+      "page.update",
+      "page.publish",
+      "placement.manage",
       "member.view",
       "member.invite",
       "member.assign_role",
@@ -92,6 +98,7 @@ export const STORE_ROLE_TEMPLATES: readonly SystemRole[] = [
       "inventory.update",
       "brand.propose",
       "tag.propose",
+      "attribute.propose",
     ] satisfies StorePermission[],
   },
   {
@@ -133,6 +140,7 @@ export const PLATFORM_ROLES: readonly SystemRole[] = [
     permissions: [
       "platform.brand.review",
       "platform.tag.review",
+      "platform.attribute.review",
       "platform.category.manage",
       "platform.product.moderate",
       "platform.review.moderate",

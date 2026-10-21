@@ -4,8 +4,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { Eye, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { ProductGallery } from "@/components/shop/product-gallery";
-import { VariantSelector } from "@/components/shop/variant-selector";
+import { ProductDetail } from "@/components/shop/product-detail";
 import { type QuickViewData, quickViewAction } from "@/lib/actions/quick-view";
 import { cn } from "@/lib/utils";
 
@@ -70,39 +69,43 @@ export function QuickView({
               />
             </div>
           ) : (
-            <div className="grid gap-6 md:grid-cols-2">
-              <ProductGallery images={data.images} title={data.title} />
-
-              <div className="flex flex-col gap-5">
-                <div className="flex flex-col gap-1">
-                  {data.brandName ? (
-                    <span className="text-accent-text text-sm">
-                      {data.brandName}
-                    </span>
-                  ) : null}
-                  <Dialog.Title className="font-semibold text-xl tracking-tight">
-                    {data.title}
-                  </Dialog.Title>
-                  <p className="text-secondary-text text-sm">
-                    Sold by {data.storeName}
-                  </p>
-                </div>
-
-                <VariantSelector variants={data.variants} />
-
-                {data.description ? (
-                  <Dialog.Description className="line-clamp-4 text-secondary-text text-sm leading-relaxed">
-                    {data.description}
-                  </Dialog.Description>
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-1">
+                {data.brandName ? (
+                  <span className="text-accent-text text-sm">
+                    {data.brandName}
+                  </span>
                 ) : null}
-
-                <Link
-                  href={`/p/${data.slug}`}
-                  className="text-accent-text text-sm underline underline-offset-4"
-                >
-                  See full details
-                </Link>
+                <Dialog.Title className="font-semibold text-xl tracking-tight">
+                  {data.title}
+                </Dialog.Title>
+                <p className="text-secondary-text text-sm">
+                  Sold by {data.storeName}
+                </p>
               </div>
+
+              {/* Same component as the product page, so quick view shows the
+                  same price range, the same unavailable combinations, and the
+                  same colour-driven gallery. */}
+              <ProductDetail
+                title={data.title}
+                images={data.images}
+                attributes={data.attributes}
+                variants={data.variants}
+              />
+
+              {data.description ? (
+                <Dialog.Description className="line-clamp-3 text-secondary-text text-sm leading-relaxed">
+                  {data.description}
+                </Dialog.Description>
+              ) : null}
+
+              <Link
+                href={`/p/${data.slug}`}
+                className="text-accent-text text-sm underline underline-offset-4"
+              >
+                See full details
+              </Link>
             </div>
           )}
         </Dialog.Popup>

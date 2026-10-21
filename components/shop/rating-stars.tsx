@@ -32,6 +32,10 @@ export function RatingStars({
 
   return (
     <span
+      // role="img" rather than a bare span: a generic role ignores aria-label,
+      // so the rating would reach a screen reader as five unexplained icons
+      // and a number.
+      role="img"
       className={cn("inline-flex items-center gap-1", className)}
       aria-label={`Rated ${value.toFixed(1)} out of 5 from ${count} review${count === 1 ? "" : "s"}`}
     >
