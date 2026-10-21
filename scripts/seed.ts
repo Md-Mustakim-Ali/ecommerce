@@ -18,8 +18,12 @@ import {
   attributeValues,
   brands,
   categories,
+  ledgerEntries,
+  orderItems,
+  orders,
   pageBlocks,
   pages,
+  payouts,
   placements,
   placementTargets,
   productAttributes,
@@ -29,16 +33,19 @@ import {
   products,
   productTags,
   productVariants,
+  reviews,
   roles,
   storeMemberRoles,
   storeMembers,
   stores,
+  subOrders,
   tags,
   user,
   userPlatformRoles,
   variantAttributeValues,
 } from "../lib/db/schema/index.ts";
 import { seedContent } from "../lib/db/seed/content.ts";
+import { seedOrdersAndReviews } from "../lib/db/seed/orders-reviews.ts";
 import { seedSystemRoles } from "../lib/db/seed/system-roles.ts";
 import {
   ADMIN,
@@ -85,6 +92,8 @@ async function reset() {
       ${attributeValues}, ${attributes},
       ${productTags}, ${productVariants}, ${productImages}, ${products},
       ${brands}, ${tags}, ${categories},
+      ${reviews}, ${ledgerEntries}, ${payouts},
+      ${orderItems}, ${subOrders}, ${orders},
       ${storeMemberRoles}, ${storeMembers}, ${stores},
       ${userPlatformRoles}, ${roles}
     restart identity cascade
@@ -193,7 +202,10 @@ async function main() {
       .onConflictDoNothing();
   }
 
-  for (const buyer of BUYERS) await createUser(buyer.name, buyer.email);
+  const buyerIds: string[] = [];
+  for (const buyer of BUYERS) {
+    buyerIds.push(await createUser(buyer.name, buyer.email));
+  }
   console.log(`  1 admin, ${BUYERS.length} buyers`);
 
   // Catalog terms
@@ -675,6 +687,12 @@ async function main() {
     storeId: firstStore.id,
   });
   console.log(`  ${content.pages} pages, ${content.placements} placements`);
+
+  // Last, because it needs published products with stock.
+  const history = await seedOrdersAndReviews(db, { buyerIds });
+  console.log(
+    `  ${history.orders} orders over a year, ${history.items} items, ${history.ledger} ledger entries, ${history.reviews} reviews`,
+  );
 
   console.log("\nDone. Every seeded account uses the password:");
   console.log(`  ${SEED_PASSWORD}`);

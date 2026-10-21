@@ -3,9 +3,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PlacementSlot } from "@/components/content/placement-slot";
 import { ProductDetail } from "@/components/shop/product-detail";
+import { RatingStars } from "@/components/shop/rating-stars";
+import { ReviewSection } from "@/components/shop/review-section";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { getSession } from "@/lib/auth/guards";
 import { getCategoryAncestry, getProductBySlug } from "@/lib/catalog/queries";
+import {
+  listReviewablePurchases,
+  listReviewsForProduct,
+  ratingBreakdown,
+} from "@/lib/reviews/queries";
 
 export async function generateMetadata({
   params,
@@ -24,8 +32,19 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
-  // Full path, so a placement targeting a parent category reaches this page.
-  const ancestry = await getCategoryAncestry(product.categorySlug);
+  const session = await getSession();
+
+  const [ancestry, reviews, breakdown, reviewable] = await Promise.all([
+    // Full path, so a placement targeting a parent category reaches this page.
+    getCategoryAncestry(product.categorySlug),
+    listReviewsForProduct(product.id),
+    ratingBreakdown(product.id),
+    // Scoped to this product, so the form only appears for someone who has
+    // actually had this delivered.
+    session
+      ? listReviewablePurchases(session.user.id, product.id)
+      : Promise.resolve([]),
+  ]);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-6 sm:px-6 sm:py-10">
@@ -54,9 +73,28 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
         <h1 className="font-semibold text-2xl leading-tight tracking-tight sm:text-3xl">
           {product.title}
         </h1>
-        <p className="text-secondary-text text-sm">
-          Sold by <span className="text-primary-text">{product.storeName}</span>
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p className="text-secondary-text text-sm">
+            Sold by{" "}
+            <span className="text-primary-text">{product.storeName}</span>
+          </p>
+          {breakdown.total > 0 ? (
+            // Jumps to the section rather than repeating it. A rating in the
+            // header that cannot be acted on is a dead end.
+            <a
+              href="#reviews"
+              className="flex items-center gap-1.5 text-sm underline-offset-4 hover:underline"
+            >
+              <RatingStars
+                average={breakdown.average}
+                count={breakdown.total}
+              />
+              <span className="text-secondary-text">
+                {breakdown.total} {breakdown.total === 1 ? "review" : "reviews"}
+              </span>
+            </a>
+          ) : null}
+        </div>
       </div>
 
       <PlacementSlot
@@ -126,6 +164,14 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
           ) : null}
         </div>
       </div>
+
+      <Separator />
+
+      <ReviewSection
+        reviews={reviews}
+        breakdown={breakdown}
+        reviewable={reviewable}
+      />
     </div>
   );
 }
