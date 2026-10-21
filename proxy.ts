@@ -9,7 +9,7 @@ import { type NextRequest, NextResponse } from "next/server";
  * be forged, so it proves nothing. Real authorization lives in `requireUser()`
  * inside the page or server action. See lib/auth/guards.ts.
  */
-const PROTECTED_PREFIXES = ["/account", "/dashboard", "/admin"];
+const PROTECTED_PREFIXES = ["/account", "/dashboard", "/admin", "/orders"];
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -27,5 +27,10 @@ export default function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/account/:path*", "/dashboard/:path*", "/admin/:path*"],
+  matcher: [
+    "/account/:path*",
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/orders/:path*",
+  ],
 };
