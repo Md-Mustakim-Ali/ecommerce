@@ -2,13 +2,24 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { ProductGrid } from "@/components/shop/product-grid";
 import { Button } from "@/components/ui/button";
-import { getCategoryTree, listProducts } from "@/lib/catalog/queries";
+import { getSession } from "@/lib/auth/guards";
+import {
+  getCategoryTree,
+  getSavedProductIds,
+  listProducts,
+} from "@/lib/catalog/queries";
 
 export default async function HomePage() {
-  const [newest, tree] = await Promise.all([
+  const [newest, tree, session] = await Promise.all([
     listProducts({ sort: "newest", perPage: 8 }),
     getCategoryTree(),
+    getSession(),
   ]);
+
+  const savedIds = await getSavedProductIds(
+    session?.user.id ?? null,
+    newest.items.map((p) => p.id),
+  );
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-12 px-4 py-8 sm:px-6 sm:py-12">
@@ -74,7 +85,7 @@ export default async function HomePage() {
             <ArrowRight className="size-4" aria-hidden />
           </Link>
         </div>
-        <ProductGrid products={newest.items} />
+        <ProductGrid products={newest.items} savedIds={savedIds} />
       </section>
     </div>
   );

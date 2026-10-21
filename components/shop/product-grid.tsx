@@ -6,10 +6,13 @@ import type { ProductListItem } from "@/lib/catalog/queries";
 
 export function ProductGrid({
   products,
+  savedIds,
   emptyTitle = "Nothing here yet",
   emptyBody = "Try a different category, or widen the filters.",
 }: {
   products: ProductListItem[];
+  /** Which of these the signed-in user has saved. Empty for guests. */
+  savedIds?: ReadonlySet<string>;
   emptyTitle?: string;
   emptyBody?: string;
 }) {
@@ -37,6 +40,7 @@ export function ProductGrid({
         <ProductCard
           key={product.id}
           product={product}
+          saved={savedIds?.has(product.id) ?? false}
           // The first row is above the fold and holds the LCP image.
           priority={index < 4}
           className="scroll-settle"

@@ -6,9 +6,11 @@ import { FilterBar } from "@/components/shop/filter-bar";
 import { Pagination } from "@/components/shop/pagination";
 import { ProductGrid } from "@/components/shop/product-grid";
 import { ProductGridSkeleton } from "@/components/ui/skeleton";
+import { getSession } from "@/lib/auth/guards";
 import {
   getBrandFacets,
   getCategoryBySlug,
+  getSavedProductIds,
   listProducts,
 } from "@/lib/catalog/queries";
 import { parseProductFilters } from "@/lib/catalog/search-params";
@@ -34,6 +36,12 @@ async function Results({
     getBrandFacets(slug),
   ]);
 
+  const session = await getSession();
+  const savedIds = await getSavedProductIds(
+    session?.user.id ?? null,
+    result.items.map((p) => p.id),
+  );
+
   return (
     <>
       <FilterBar
@@ -41,7 +49,7 @@ async function Results({
         total={result.total}
         hasQuery={Boolean(filters.q)}
       />
-      <ProductGrid products={result.items} />
+      <ProductGrid products={result.items} savedIds={savedIds} />
       <Pagination
         page={result.page}
         perPage={result.perPage}

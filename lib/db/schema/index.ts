@@ -13,4 +13,5 @@ export * from "./money";
 export * from "./orders";
 export * from "./rbac";
 export * from "./reviews";
+export * from "./saved";
 export * from "./stores";

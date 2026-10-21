@@ -22,6 +22,13 @@
       "when": 1788432233047,
       "tag": "0002_yummy_slapstick",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788444704088,
+      "tag": "0003_order_number_sequence",
+      "breakpoints": true
     }
   ]
 }

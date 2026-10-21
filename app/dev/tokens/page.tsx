@@ -38,6 +38,10 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     stock: 12,
     imageUrl: null,
     blurDataUrl: null,
+    variantCount: 1,
+    defaultVariantId: null,
+    ratingAverage: 4.6,
+    ratingCount: 24,
   },
   {
     id: "demo-2",
@@ -51,6 +55,10 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     stock: 3,
     imageUrl: null,
     blurDataUrl: null,
+    variantCount: 1,
+    defaultVariantId: null,
+    ratingAverage: 4.6,
+    ratingCount: 24,
   },
   {
     id: "demo-3",
@@ -64,6 +72,10 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     stock: 0,
     imageUrl: null,
     blurDataUrl: null,
+    variantCount: 1,
+    defaultVariantId: null,
+    ratingAverage: 4.6,
+    ratingCount: 24,
   },
   {
     id: "demo-4",
@@ -77,6 +89,10 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     stock: 28,
     imageUrl: null,
     blurDataUrl: null,
+    variantCount: 1,
+    defaultVariantId: null,
+    ratingAverage: 4.6,
+    ratingCount: 24,
   },
 ];
 

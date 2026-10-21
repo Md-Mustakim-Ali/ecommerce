@@ -7,6 +7,8 @@ import {
   products,
   productTags,
   productVariants,
+  reviews,
+  savedItems,
   stores,
   tags,
 } from "@/lib/db/schema";
@@ -32,6 +34,12 @@ export type ProductListItem = {
   stock: number;
   imageUrl: string | null;
   blurDataUrl: string | null;
+  /** How many variants exist. 1 means the card can add to cart directly. */
+  variantCount: number;
+  /** Cheapest in-stock variant, so quick-add never picks a sold-out one. */
+  defaultVariantId: string | null;
+  ratingAverage: number | null;
+  ratingCount: number;
 };
 
 /**
@@ -48,10 +56,32 @@ const priceAgg = db
       "max_compare",
     ),
     totalStock: sql<number>`sum(${productVariants.stock})`.as("total_stock"),
+    variantCount: sql<number>`count(*)::int`.as("variant_count"),
+    // Cheapest variant that is actually in stock, so the card's quick-add
+    // never picks a sold-out one.
+    defaultVariantId: sql<
+      string | null
+    >`(array_agg(${productVariants.id} order by (${productVariants.stock} > 0) desc, ${productVariants.priceCents} asc))[1]`.as(
+      "default_variant_id",
+    ),
   })
   .from(productVariants)
   .groupBy(productVariants.productId)
   .as("price_agg");
+
+/** Published reviews only — a flagged or removed one must not move the score. */
+const reviewAgg = db
+  .select({
+    productId: reviews.productId,
+    average: sql<number>`round(avg(${reviews.rating})::numeric, 2)`.as(
+      "rating_avg",
+    ),
+    count: sql<number>`count(*)::int`.as("rating_count"),
+  })
+  .from(reviews)
+  .where(eq(reviews.status, "published"))
+  .groupBy(reviews.productId)
+  .as("review_agg");
 
 /** First image by position. */
 const primaryImage = db
@@ -161,12 +191,17 @@ export async function listProducts(filters: ProductFilters = {}) {
       stock: priceAgg.totalStock,
       imageUrl: primaryImage.url,
       blurDataUrl: primaryImage.blurDataUrl,
+      variantCount: priceAgg.variantCount,
+      defaultVariantId: priceAgg.defaultVariantId,
+      ratingAverage: reviewAgg.average,
+      ratingCount: sql<number>`coalesce(${reviewAgg.count}, 0)`,
     })
     .from(products)
     .innerJoin(stores, eq(stores.id, products.storeId))
     .innerJoin(priceAgg, eq(priceAgg.productId, products.id))
     .leftJoin(brands, eq(brands.id, products.brandId))
     .leftJoin(primaryImage, eq(primaryImage.productId, products.id))
+    .leftJoin(reviewAgg, eq(reviewAgg.productId, products.id))
     .where(where);
 
   const [items, [{ total }]] = await Promise.all([
@@ -325,4 +360,30 @@ export async function getCategoryBySlug(slug: string) {
     .where(eq(categories.slug, slug))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Which of these products the current user has saved.
+ *
+ * Deliberately a second query rather than a join on listProducts: the listing
+ * is identical for everyone and therefore cacheable, and folding a per-user
+ * column into it would make every grid render user-specific.
+ */
+export async function getSavedProductIds(
+  userId: string | null,
+  productIds: string[],
+): Promise<Set<string>> {
+  if (!userId || productIds.length === 0) return new Set();
+
+  const rows = await db
+    .select({ productId: savedItems.productId })
+    .from(savedItems)
+    .where(
+      and(
+        eq(savedItems.userId, userId),
+        inArray(savedItems.productId, productIds),
+      ),
+    );
+
+  return new Set(rows.map((r) => r.productId));
 }

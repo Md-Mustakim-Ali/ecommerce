@@ -4,7 +4,12 @@ import { FilterBar } from "@/components/shop/filter-bar";
 import { Pagination } from "@/components/shop/pagination";
 import { ProductGrid } from "@/components/shop/product-grid";
 import { ProductGridSkeleton } from "@/components/ui/skeleton";
-import { getBrandFacets, listProducts } from "@/lib/catalog/queries";
+import { getSession } from "@/lib/auth/guards";
+import {
+  getBrandFacets,
+  getSavedProductIds,
+  listProducts,
+} from "@/lib/catalog/queries";
 import { parseProductFilters } from "@/lib/catalog/search-params";
 
 export const metadata: Metadata = { title: "Search" };
@@ -20,6 +25,12 @@ async function Results({
     getBrandFacets(),
   ]);
 
+  const session = await getSession();
+  const savedIds = await getSavedProductIds(
+    session?.user.id ?? null,
+    result.items.map((p) => p.id),
+  );
+
   return (
     <>
       <FilterBar
@@ -29,6 +40,7 @@ async function Results({
       />
       <ProductGrid
         products={result.items}
+        savedIds={savedIds}
         emptyTitle={
           filters.q ? `Nothing matches "${filters.q}"` : "No products yet"
         }
