@@ -48,6 +48,12 @@ const SECTIONS: {
     description: "Balance and payout history.",
     permission: "payout.view",
   },
+  {
+    href: (id) => `/dashboard/${id}/analytics`,
+    label: "Analytics",
+    description: "Trends, forecast, concentration and what to reorder.",
+    permission: "report.sales.view",
+  },
 ];
 
 export default async function StoreOverviewPage({

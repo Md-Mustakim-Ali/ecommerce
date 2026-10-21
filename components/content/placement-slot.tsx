@@ -1,10 +1,11 @@
+import { BadgeCheck, Store } from "lucide-react";
 import { BlockRenderer } from "@/components/content/block-renderer";
 import {
   getPlacementsForRoute,
   placementsInSlot,
-  type ResolvedPlacement,
   type RouteContext,
 } from "@/lib/content/queries";
+import type { PlacementSlotName } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,10 +22,21 @@ export async function PlacementSlot({
   route,
   slot,
   className,
+  /**
+   * Whether to name the source above each placement.
+   *
+   * On by default everywhere a seller can place something. A buyer looking at
+   * "free shipping this week" cannot otherwise tell whether the marketplace is
+   * promising it or one seller is, and those are different promises with
+   * different people behind them. Off for the announcement bar, which is
+   * platform-only by construction and where a label would be noise.
+   */
+  attribution = true,
 }: {
   route: RouteContext;
-  slot: ResolvedPlacement["slot"];
+  slot: PlacementSlotName;
   className?: string;
+  attribution?: boolean;
 }) {
   const all = await getPlacementsForRoute(route);
   const matching = placementsInSlot(all, slot);
@@ -37,13 +49,43 @@ export async function PlacementSlot({
         className,
       )}
     >
-      <BlockRenderer
-        blocks={matching.map((placement) => ({
-          id: placement.id,
-          type: placement.type,
-          data: placement.data,
-        }))}
-      />
+      {matching.map((placement) => (
+        <div key={placement.id} className="flex flex-col gap-1.5">
+          {attribution ? (
+            <p className="flex items-center gap-1.5 text-tertiary-text text-xs">
+              {placement.scope === "platform" ? (
+                <>
+                  <BadgeCheck
+                    aria-hidden
+                    className="size-3.5 text-accent-text"
+                  />
+                  <span>Marketplace offer</span>
+                </>
+              ) : (
+                <>
+                  <Store aria-hidden className="size-3.5" />
+                  <span>
+                    Offer from{" "}
+                    <span className="text-secondary-text">
+                      {placement.storeName ?? "this store"}
+                    </span>
+                  </span>
+                </>
+              )}
+            </p>
+          ) : null}
+
+          <BlockRenderer
+            blocks={[
+              {
+                id: placement.id,
+                type: placement.type,
+                data: placement.data,
+              },
+            ]}
+          />
+        </div>
+      ))}
     </div>
   );
 }

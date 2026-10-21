@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { placeOrderAction } from "@/lib/actions/checkout";
+import { checkDiscountAction } from "@/lib/actions/discounts";
 import type { CartSummary } from "@/lib/cart";
 import { formatMoney } from "@/lib/money/format";
 
@@ -34,12 +35,48 @@ export function CheckoutForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  const [discount, setDiscount] = useState<{
+    code: string;
+    label: string;
+    amountCents: number;
+    shippingDiscountCents: number;
+    description: string | null;
+  } | null>(null);
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [checking, startChecking] = useTransition();
+
   const byStore = new Map<string, typeof cart.lines>();
   for (const line of cart.lines) {
     byStore.set(line.storeId, [...(byStore.get(line.storeId) ?? []), line]);
   }
 
-  const total = cart.subtotalCents + shippingCents;
+  const shippingAfter = Math.max(
+    0,
+    shippingCents - (discount?.shippingDiscountCents ?? 0),
+  );
+  const total =
+    cart.subtotalCents + shippingAfter - (discount?.amountCents ?? 0);
+
+  function checkCode(form: HTMLFormElement) {
+    setDiscountError(null);
+    const raw = new FormData(form).get("discountCode");
+    const emailField = form
+      .closest("form")
+      ?.querySelector<HTMLInputElement>("#email");
+
+    startChecking(async () => {
+      const result = await checkDiscountAction({
+        code: String(raw ?? ""),
+        email: emailField?.value ?? undefined,
+      });
+      if (!result.ok) {
+        setDiscount(null);
+        setDiscountError(result.message);
+        return;
+      }
+      setDiscount(result);
+    });
+  }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,6 +85,7 @@ export function CheckoutForm({
 
     startTransition(async () => {
       const result = await placeOrderAction({
+        discountCode: discount?.code,
         email: String(data.get("email") ?? ""),
         shippingAddress: {
           recipientName: String(data.get("recipientName") ?? ""),
@@ -201,6 +239,104 @@ export function CheckoutForm({
 
         <Separator />
 
+        {/*
+          A nested <form> is invalid HTML, so this is a div with its own submit
+          handler. Enter still applies the code rather than placing the order,
+          which is what someone typing a coupon expects.
+        */}
+        <div className="flex flex-col gap-2">
+          {discount ? (
+            <div className="flex items-start justify-between gap-3 rounded-lg bg-positive-muted px-3 py-2">
+              <div className="flex min-w-0 flex-col">
+                <span className="font-medium text-positive text-sm">
+                  {discount.code} applied
+                </span>
+                <span className="text-secondary-text text-xs">
+                  {discount.description ?? discount.label}
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setDiscount(null);
+                  setDiscountError(null);
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="discountCode">Discount code</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="discountCode"
+                  name="discountCode"
+                  placeholder="SAVE10"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="uppercase"
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    const input = event.currentTarget;
+                    startChecking(async () => {
+                      const result = await checkDiscountAction({
+                        code: input.value,
+                      });
+                      if (!result.ok) {
+                        setDiscount(null);
+                        setDiscountError(result.message);
+                        return;
+                      }
+                      setDiscountError(null);
+                      setDiscount(result);
+                    });
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={checking}
+                  onClick={(event) => {
+                    const input =
+                      event.currentTarget.parentElement?.querySelector<HTMLInputElement>(
+                        "#discountCode",
+                      );
+                    if (!input) return;
+                    startChecking(async () => {
+                      const result = await checkDiscountAction({
+                        code: input.value,
+                      });
+                      if (!result.ok) {
+                        setDiscount(null);
+                        setDiscountError(result.message);
+                        return;
+                      }
+                      setDiscountError(null);
+                      setDiscount(result);
+                    });
+                  }}
+                >
+                  {checking ? (
+                    <Loader2 className="animate-spin" aria-hidden />
+                  ) : null}
+                  Apply
+                </Button>
+              </div>
+              {discountError ? (
+                <p role="alert" className="text-critical text-xs">
+                  {discountError}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
         <dl className="flex flex-col gap-1.5 text-sm">
           <div className="flex justify-between">
             <dt className="text-secondary-text">Subtotal</dt>
@@ -208,10 +344,28 @@ export function CheckoutForm({
               {formatMoney(cart.subtotalCents, "USD")}
             </dd>
           </div>
+
+          {discount && discount.amountCents > 0 ? (
+            <div className="flex justify-between">
+              <dt className="text-positive">{discount.code}</dt>
+              <dd className="tabular text-positive">
+                −{formatMoney(discount.amountCents, "USD")}
+              </dd>
+            </div>
+          ) : null}
+
           <div className="flex justify-between">
             <dt className="text-secondary-text">Shipping</dt>
             <dd className="tabular">
-              {shippingCents === 0 ? "Free" : formatMoney(shippingCents, "USD")}
+              {shippingAfter === 0 ? (
+                discount && discount.shippingDiscountCents > 0 ? (
+                  <span className="text-positive">Free</span>
+                ) : (
+                  "Free"
+                )
+              ) : (
+                formatMoney(shippingAfter, "USD")
+              )}
             </dd>
           </div>
         </dl>

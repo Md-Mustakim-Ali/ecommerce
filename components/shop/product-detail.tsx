@@ -36,6 +36,9 @@ export function ProductDetail({
   title,
   stockDisplay,
   lowStockThreshold,
+  beforePrice,
+  afterOptions,
+  sidebar,
 }: {
   images: DetailImage[];
   attributes: ProductAttribute[];
@@ -43,6 +46,17 @@ export function ProductDetail({
   title: string;
   stockDisplay?: "never" | "always" | "when_low";
   lowStockThreshold?: number;
+  /**
+   * Promotional slots, passed in as already-rendered server content.
+   *
+   * This component is a client component and the placements are a database
+   * read, so they arrive as children rather than being fetched here. That also
+   * keeps the seller's choice of position a property of the page rather than
+   * something this component has to know about.
+   */
+  beforePrice?: React.ReactNode;
+  afterOptions?: React.ReactNode;
+  sidebar?: React.ReactNode;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -96,13 +110,18 @@ export function ProductDetail({
         activeIndex={activeIndex}
         onActiveIndexChange={setActiveIndex}
       />
-      <OptionPicker
-        attributes={attributes}
-        variants={variants}
-        stockDisplay={stockDisplay}
-        lowStockThreshold={lowStockThreshold}
-        onSelectionChange={handleSelection}
-      />
+      <div className="flex flex-col gap-5">
+        {beforePrice}
+        <OptionPicker
+          attributes={attributes}
+          variants={variants}
+          stockDisplay={stockDisplay}
+          lowStockThreshold={lowStockThreshold}
+          onSelectionChange={handleSelection}
+        />
+        {afterOptions}
+        {sidebar}
+      </div>
     </div>
   );
 }

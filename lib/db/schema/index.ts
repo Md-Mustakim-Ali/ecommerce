@@ -11,6 +11,7 @@ export * from "./auth";
 export * from "./cart";
 export * from "./catalog";
 export * from "./content";
+export * from "./discounts";
 export * from "./identity";
 export * from "./money";
 export * from "./orders";

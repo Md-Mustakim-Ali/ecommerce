@@ -117,7 +117,39 @@ export const placementSlot = pgEnum("placement_slot", [
   "above_content",
   /** After the page's own content. */
   "below_content",
+
+  // Product-page positions. A seller running an offer on one product wants it
+  // where the buyer is already looking — next to the price, or under the size
+  // picker — not in a band at the top of the page with the breadcrumb.
+  /** Directly under the breadcrumb, above the title. */
+  "product_top",
+  /** Between the title block and the price. */
+  "product_before_price",
+  /** Under the option picker, next to add-to-cart. */
+  "product_after_options",
+  /** In the right-hand column beside the gallery. */
+  "product_sidebar",
+  /** Under the description and tags. */
+  "product_below_details",
 ]);
+
+/**
+ * Slots a store may target, as opposed to ones reserved for the platform.
+ *
+ * The announcement bar and the page-level bands are site furniture: they sit
+ * above the header or wrap the whole page, so a seller placing one there would
+ * be dressing a page they do not own. Sellers get the product-page positions,
+ * which sit inside their own listing.
+ */
+export const STORE_ASSIGNABLE_SLOTS = [
+  "product_top",
+  "product_before_price",
+  "product_after_options",
+  "product_sidebar",
+  "product_below_details",
+] as const;
+
+export type PlacementSlotName = (typeof placementSlot.enumValues)[number];
 
 /**
  * Promotional content injected into pages that already exist.

@@ -2,6 +2,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   cartItems,
+  discountCodes,
+  discountRedemptions,
   orderItems,
   orders,
   productImages,
@@ -27,6 +29,14 @@ export type PlaceOrderInput = {
   shippingCents: number;
   taxCents?: number;
   discountCents?: number;
+  /**
+   * The code being redeemed, if any.
+   *
+   * Recorded inside the order transaction so the counter and the order rise or
+   * fall together. Incrementing it beforehand would leak a redemption every
+   * time a checkout failed on stock.
+   */
+  discount?: { id: string; code: string; amountCents: number };
 };
 
 export type PlaceOrderResult =
@@ -239,6 +249,37 @@ export async function placeOrder(
           `Stock changed while placing the order: ${row.productTitle}`,
         );
       }
+    }
+
+    if (input.discount) {
+      // Conditional increment. Two checkouts racing for the last use of a
+      // limited code both pass the earlier availability check; only one can
+      // pass this, and the loser's whole transaction rolls back.
+      const claimed = await tx
+        .update(discountCodes)
+        .set({ redemptionCount: sql`${discountCodes.redemptionCount} + 1` })
+        .where(
+          and(
+            eq(discountCodes.id, input.discount.id),
+            sql`${discountCodes.maxRedemptions} is null
+                or ${discountCodes.redemptionCount} < ${discountCodes.maxRedemptions}`,
+          ),
+        )
+        .returning({ id: discountCodes.id });
+
+      if (claimed.length === 0) {
+        throw new Error(
+          `The code ${input.discount.code} was fully claimed while you were checking out.`,
+        );
+      }
+
+      await tx.insert(discountRedemptions).values({
+        discountId: input.discount.id,
+        orderId: order.id,
+        userId: input.buyerId,
+        email: input.email,
+        amountCents: input.discount.amountCents,
+      });
     }
 
     // The cart is emptied, not deleted, so the buyer keeps the same cart row.

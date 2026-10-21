@@ -46,20 +46,55 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
       : Promise.resolve([]),
   ]);
 
+  const routeContext = {
+    kind: "product" as const,
+    slug,
+    storeSlug: product.storeSlug,
+    categoryPath: ancestry,
+  };
+
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-6 sm:px-6 sm:py-10">
-      <nav aria-label="Breadcrumb" className="text-secondary-text text-sm">
-        <Link href="/" className="hover:text-primary-text">
-          Home
-        </Link>
-        <span className="px-2 text-tertiary-text">/</span>
-        <Link
-          href={`/c/${product.categorySlug}`}
-          className="hover:text-primary-text"
-        >
-          {product.categoryName}
-        </Link>
+    <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
+      {/*
+        The breadcrumb ends on the product itself. Stopping at the category
+        leaves the trail one step short of where the visitor actually is, and
+        the current page is the one crumb that never needs to be a link.
+      */}
+      <nav aria-label="Breadcrumb">
+        <ol className="flex flex-wrap items-center text-secondary-text text-sm">
+          <li>
+            <Link href="/" className="hover:text-primary-text">
+              Home
+            </Link>
+          </li>
+          <li aria-hidden className="px-2 text-tertiary-text">
+            /
+          </li>
+          <li>
+            <Link
+              href={`/c/${product.categorySlug}`}
+              className="hover:text-primary-text"
+            >
+              {product.categoryName}
+            </Link>
+          </li>
+          <li aria-hidden className="px-2 text-tertiary-text">
+            /
+          </li>
+          <li className="min-w-0">
+            <span
+              aria-current="page"
+              className="line-clamp-1 text-primary-text"
+            >
+              {product.title}
+            </span>
+          </li>
+        </ol>
       </nav>
+
+      {/* Above the title, so a marketplace-wide or store offer is the first
+          thing read rather than something found halfway down. */}
+      <PlacementSlot route={routeContext} slot="product_top" />
 
       <div className="flex flex-col gap-2">
         {product.brandName ? (
@@ -76,7 +111,12 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <p className="text-secondary-text text-sm">
             Sold by{" "}
-            <span className="text-primary-text">{product.storeName}</span>
+            <Link
+              href={`/store/${product.storeSlug}`}
+              className="text-primary-text underline-offset-4 hover:underline"
+            >
+              {product.storeName}
+            </Link>
           </p>
           {breakdown.total > 0 ? (
             // Jumps to the section rather than repeating it. A rating in the
@@ -97,15 +137,7 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
         </div>
       </div>
 
-      <PlacementSlot
-        route={{
-          kind: "product",
-          slug,
-          storeSlug: product.storeSlug,
-          categoryPath: ancestry,
-        }}
-        slot="above_content"
-      />
+      <PlacementSlot route={routeContext} slot="above_content" />
 
       <ProductDetail
         title={product.title}
@@ -135,7 +167,16 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
           stock: variant.stock,
           combination: variant.combination,
         }))}
+        beforePrice={
+          <PlacementSlot route={routeContext} slot="product_before_price" />
+        }
+        afterOptions={
+          <PlacementSlot route={routeContext} slot="product_after_options" />
+        }
+        sidebar={<PlacementSlot route={routeContext} slot="product_sidebar" />}
       />
+
+      <PlacementSlot route={routeContext} slot="product_below_details" />
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
         <div className="flex flex-col gap-6">

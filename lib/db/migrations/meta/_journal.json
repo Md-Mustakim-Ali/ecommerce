@@ -57,6 +57,20 @@
       "when": 1788446352410,
       "tag": "0007_famous_marvel_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788452439837,
+      "tag": "0008_clean_zarek",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788452750176,
+      "tag": "0009_lumpy_patriot",
+      "breakpoints": true
     }
   ]
 }

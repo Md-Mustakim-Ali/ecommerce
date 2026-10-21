@@ -445,13 +445,45 @@ function NewPlacementForm({
           <select
             id="p-slot"
             name="slot"
-            defaultValue="above_content"
+            defaultValue={
+              scope.scope === "store" ? "product_top" : "above_content"
+            }
             className="h-11 rounded-control border border-border-strong bg-surface-sunken px-4 text-sm"
           >
-            <option value="announcement_bar">Announcement bar</option>
-            <option value="above_content">Above the content</option>
-            <option value="below_content">Below the content</option>
+            {/*
+              A store only gets the positions inside its own listing. The
+              announcement bar and the page bands wrap pages the store does not
+              own, so offering them would be offering something the server will
+              refuse.
+            */}
+            {scope.scope === "platform" ? (
+              <optgroup label="Whole page">
+                <option value="announcement_bar">
+                  Announcement bar (above the header)
+                </option>
+                <option value="above_content">Above the content</option>
+                <option value="below_content">Below the content</option>
+              </optgroup>
+            ) : null}
+            <optgroup label="On a product page">
+              <option value="product_top">Top, under the breadcrumb</option>
+              <option value="product_before_price">Just above the price</option>
+              <option value="product_after_options">
+                Under the options, by add to cart
+              </option>
+              <option value="product_sidebar">
+                Beside the gallery, in the buy column
+              </option>
+              <option value="product_below_details">
+                Below the description
+              </option>
+            </optgroup>
           </select>
+          <p className="text-tertiary-text text-xs">
+            {scope.scope === "store"
+              ? "Shoppers see this labelled as an offer from your store."
+              : "Shoppers see this labelled as a marketplace offer."}
+          </p>
         </div>
       </div>
 

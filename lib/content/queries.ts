@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { cache } from "react";
 import { db } from "@/lib/db";
 import {
+  type PlacementSlotName,
   pageBlocks,
   pages,
   placements,
@@ -62,8 +63,17 @@ export const getPublishedPage = cache(
 export type ResolvedPlacement = {
   id: string;
   type: string;
-  slot: "announcement_bar" | "above_content" | "below_content";
+  slot: PlacementSlotName;
   data: Record<string, unknown>;
+  /**
+   * Who put this here. Carried all the way to the customer, because a buyer
+   * seeing "20% off" on a product page has no way to tell whether the seller
+   * is offering it or the marketplace is, and those are different promises
+   * with different people standing behind them.
+   */
+  scope: "platform" | "store";
+  /** The store's display name, when the placement is a store's own. */
+  storeName: string | null;
 };
 
 /**
@@ -91,6 +101,7 @@ export const getPlacementsForRoute = cache(
         endsAt: placements.endsAt,
         scope: placements.scope,
         storeSlug: stores.slug,
+        storeName: stores.name,
         targetType: placementTargets.targetType,
         targetValue: placementTargets.targetValue,
         isExclusion: placementTargets.isExclusion,
@@ -139,6 +150,8 @@ export const getPlacementsForRoute = cache(
             type: row.type,
             slot: row.slot,
             data: row.data ?? {},
+            scope: row.scope,
+            storeName: row.storeName,
             priority: row.priority,
             status: row.status,
             startsAt: row.startsAt,
@@ -169,13 +182,15 @@ export const getPlacementsForRoute = cache(
         type: placement.type,
         slot: placement.slot,
         data: placement.data,
+        scope: placement.scope,
+        storeName: placement.storeName,
       }));
   },
 );
 
 export function placementsInSlot(
   placements: ResolvedPlacement[],
-  slot: ResolvedPlacement["slot"],
+  slot: PlacementSlotName,
 ) {
   return placements.filter((p) => p.slot === slot);
 }

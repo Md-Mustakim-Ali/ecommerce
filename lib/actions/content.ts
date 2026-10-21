@@ -17,6 +17,7 @@ import {
   pages,
   placements,
   placementTargets,
+  STORE_ASSIGNABLE_SLOTS,
 } from "@/lib/db/schema";
 
 /**
@@ -265,7 +266,16 @@ const targetSchema = z.object({
 
 const placementSchema = z.object({
   type: z.string().max(40),
-  slot: z.enum(["announcement_bar", "above_content", "below_content"]),
+  slot: z.enum([
+    "announcement_bar",
+    "above_content",
+    "below_content",
+    "product_top",
+    "product_before_price",
+    "product_after_options",
+    "product_sidebar",
+    "product_below_details",
+  ]),
   data: z.record(z.string(), z.unknown()),
   priority: z.number().int().min(0).max(1000).default(0),
   startsAt: z.string().datetime().nullable().optional(),
@@ -273,6 +283,22 @@ const placementSchema = z.object({
   targets: z.array(targetSchema).min(1).max(50),
   publish: z.boolean().default(false),
 });
+
+/**
+ * Sellers may only use the slots that sit inside their own listing.
+ *
+ * The announcement bar and the page-level bands are site furniture — above the
+ * header, or wrapping the whole page — so a seller placing something there
+ * would be dressing a page they do not own. Checked here rather than only in
+ * the form, because the form is a courtesy and this is the control.
+ */
+function slotAllowedForScope(
+  scope: { scope: "platform" | "store" },
+  slot: string,
+): boolean {
+  if (scope.scope === "platform") return true;
+  return (STORE_ASSIGNABLE_SLOTS as readonly string[]).includes(slot);
+}
 
 export async function createPlacementAction(
   input: Scope & z.input<typeof placementSchema>,
@@ -286,6 +312,14 @@ export async function createPlacementAction(
   }
 
   const actor = await authorise(scope.data, "placement");
+
+  if (!slotAllowedForScope(scope.data, parsed.data.slot)) {
+    return {
+      ok: false,
+      message:
+        "That position belongs to the whole site. A store offer can sit anywhere on its own product pages.",
+    };
+  }
 
   const validated = validateBlockInput(parsed.data.type, parsed.data.data);
   if (!validated.ok) return { ok: false, message: validated.message };

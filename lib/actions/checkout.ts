@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth/guards";
 import { getCart, getOrCreateCartId } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
+import { resolveDiscountForCart } from "@/lib/discounts/resolve";
 import { placeOrder } from "@/lib/orders/create";
 import { shippingFor } from "@/lib/orders/shipping";
 import { paymentProvider } from "@/lib/payments";
@@ -37,6 +38,8 @@ const addressSchema = z.object({
 const checkoutSchema = z.object({
   email: z.email("Enter a valid email"),
   shippingAddress: addressSchema,
+  /** Optional. Re-evaluated here; the browser's figure is never trusted. */
+  discountCode: z.string().trim().max(60).optional(),
 });
 
 export type CheckoutResult =
@@ -75,13 +78,44 @@ export async function placeOrderAction(
 
   const cartId = await getOrCreateCartId();
 
+  let shippingCents = shippingFor(cart.subtotalCents);
+  let discountCents = 0;
+  let redeeming: { id: string; code: string; amountCents: number } | undefined;
+
+  // Recomputed from the database rather than taken from the form. The client
+  // sends only the code; the amount is never something it gets to name.
+  if (parsed.data.discountCode) {
+    const applied = await resolveDiscountForCart({
+      code: parsed.data.discountCode,
+      cart,
+      shippingCents,
+      userId: session?.user.id ?? null,
+      email: parsed.data.email,
+    });
+
+    // A code that has expired between the preview and the submit stops the
+    // order rather than silently charging full price — the buyer agreed to a
+    // total, and quietly taking more is the worst possible resolution.
+    if (!applied.ok) return { ok: false, message: applied.message };
+
+    discountCents = applied.amountCents;
+    shippingCents = Math.max(0, shippingCents - applied.shippingDiscountCents);
+    redeeming = {
+      id: applied.discountId,
+      code: applied.code,
+      amountCents: applied.amountCents + applied.shippingDiscountCents,
+    };
+  }
+
   const result = await placeOrder({
     cartId,
     buyerId: session?.user.id ?? null,
     email: parsed.data.email,
     shippingAddress: parsed.data.shippingAddress,
     currency: CURRENCY,
-    shippingCents: shippingFor(cart.subtotalCents),
+    shippingCents,
+    discountCents,
+    discount: redeeming,
   });
 
   if (!result.ok) return { ok: false, message: result.message };

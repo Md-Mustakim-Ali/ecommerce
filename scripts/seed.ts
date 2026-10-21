@@ -110,6 +110,15 @@ async function createUser(name: string, email: string): Promise<string> {
   const result = await auth.api.signUpEmail({
     body: { name, email, password: SEED_PASSWORD },
   });
+
+  // Marked verified straight away. There is no mail transport yet, so a seeded
+  // account could never verify itself, and an unverifiable "not verified"
+  // state reads as a broken account rather than an unbuilt feature.
+  await db
+    .update(user)
+    .set({ emailVerified: true })
+    .where(eq(user.id, result.user.id));
+
   return result.user.id;
 }
 
