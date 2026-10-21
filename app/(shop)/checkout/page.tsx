@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PlacementSlot } from "@/components/content/placement-slot";
 import { Button } from "@/components/ui/button";
-import { shippingFor } from "@/lib/actions/checkout";
 import { getSession } from "@/lib/auth/guards";
 import { getCart } from "@/lib/cart";
+import { shippingFor } from "@/lib/orders/shipping";
 import { CheckoutForm } from "./checkout-form";
 
 export const metadata: Metadata = { title: "Checkout" };

@@ -8,6 +8,7 @@ import { getCart, getOrCreateCartId } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
 import { placeOrder } from "@/lib/orders/create";
+import { shippingFor } from "@/lib/orders/shipping";
 import { paymentProvider } from "@/lib/payments";
 
 /**
@@ -49,22 +50,7 @@ export type CheckoutResult =
     }
   | { ok: false; message: string };
 
-/**
- * Flat shipping, for now.
- *
- * A real rate depends on the market, the carrier and the parcel, none of which
- * are decided. It is a single constant so there is exactly one place to change
- * when they are, rather than a formula that looks authoritative and is not.
- */
-const FLAT_SHIPPING_CENTS = 599;
-const FREE_SHIPPING_THRESHOLD_CENTS = 7500;
 const CURRENCY = "USD";
-
-export function shippingFor(subtotalCents: number): number {
-  return subtotalCents >= FREE_SHIPPING_THRESHOLD_CENTS
-    ? 0
-    : FLAT_SHIPPING_CENTS;
-}
 
 export async function placeOrderAction(
   input: z.input<typeof checkoutSchema>,
