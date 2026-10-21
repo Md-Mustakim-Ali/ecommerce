@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { PlacementSlot } from "@/components/content/placement-slot";
 import { ProductGrid } from "@/components/shop/product-grid";
 import { Button } from "@/components/ui/button";
 import { getSession } from "@/lib/auth/guards";
@@ -23,6 +24,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-12 px-4 py-8 sm:px-6 sm:py-12">
+      <PlacementSlot route={{ kind: "home" }} slot="above_content" />
       {/*
         The one deliberate non-user-triggered moment on the site, per
         AGENTS.md. An ambient wash rather than an entrance animation.
@@ -87,6 +89,8 @@ export default async function HomePage() {
         </div>
         <ProductGrid products={newest.items} savedIds={savedIds} />
       </section>
+
+      <PlacementSlot route={{ kind: "home" }} slot="below_content" />
     </div>
   );
 }

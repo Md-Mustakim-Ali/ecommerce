@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { cache } from "react";
 import { db } from "@/lib/db";
 import {
   attributes,
@@ -755,3 +756,26 @@ export async function getAllFacets(categorySlug?: string) {
   ]);
   return { brands, stores, attributes, tags };
 }
+
+/**
+ * Slugs from the root down to this category, inclusive.
+ *
+ * Placement targeting walks this so a banner on "Electronics" reaches
+ * "Headphones" and the products filed beneath it. Targeting the exact slug
+ * only would mean re-targeting every campaign whenever the tree changes.
+ */
+export const getCategoryAncestry = cache(
+  async (slug: string): Promise<string[]> => {
+    const rows = await db.execute<{ slug: string; depth: number }>(sql`
+      with recursive up as (
+        select id, parent_id, slug, 0 as depth
+          from ${categories} where slug = ${slug}
+        union all
+        select c.id, c.parent_id, c.slug, up.depth + 1
+          from ${categories} c join up on up.parent_id = c.id
+      )
+      select slug, depth from up order by depth desc
+    `);
+    return rows.map((r) => r.slug);
+  },
+);

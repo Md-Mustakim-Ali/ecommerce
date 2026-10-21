@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PlacementSlot } from "@/components/content/placement-slot";
 import { ProductDetail } from "@/components/shop/product-detail";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { getProductBySlug } from "@/lib/catalog/queries";
+import { getCategoryAncestry, getProductBySlug } from "@/lib/catalog/queries";
 
 export async function generateMetadata({
   params,
@@ -22,6 +23,9 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product) notFound();
+
+  // Full path, so a placement targeting a parent category reaches this page.
+  const ancestry = await getCategoryAncestry(product.categorySlug);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-6 sm:px-6 sm:py-10">
@@ -54,6 +58,16 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
           Sold by <span className="text-primary-text">{product.storeName}</span>
         </p>
       </div>
+
+      <PlacementSlot
+        route={{
+          kind: "product",
+          slug,
+          storeSlug: product.storeSlug,
+          categoryPath: ancestry,
+        }}
+        slot="above_content"
+      />
 
       <ProductDetail
         title={product.title}

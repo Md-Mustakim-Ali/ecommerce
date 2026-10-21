@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { PlacementSlot } from "@/components/content/placement-slot";
 import { FilterPanel } from "@/components/shop/filter-panel";
 import { Pagination } from "@/components/shop/pagination";
 import { ProductGrid } from "@/components/shop/product-grid";
@@ -9,6 +10,7 @@ import { ProductGridSkeleton } from "@/components/ui/skeleton";
 import { getSession } from "@/lib/auth/guards";
 import {
   getAllFacets,
+  getCategoryAncestry,
   getCategoryBySlug,
   getSavedProductIds,
   listProducts,
@@ -67,7 +69,10 @@ export default async function CategoryPage({
 }: PageProps<"/c/[slug]">) {
   const [{ slug }, raw] = await Promise.all([params, searchParams]);
 
-  const category = await getCategoryBySlug(slug);
+  const [category, ancestry] = await Promise.all([
+    getCategoryBySlug(slug),
+    getCategoryAncestry(slug),
+  ]);
   if (!category) notFound();
 
   return (
@@ -83,6 +88,11 @@ export default async function CategoryPage({
       <h1 className="font-semibold text-2xl tracking-tight sm:text-3xl">
         {category.name}
       </h1>
+
+      <PlacementSlot
+        route={{ kind: "category", slug, categoryPath: ancestry }}
+        slot="above_content"
+      />
 
       <Suspense
         key={JSON.stringify(raw)}

@@ -25,6 +25,12 @@ const SECTIONS: {
     permission: "product.create",
   },
   {
+    href: (id) => `/dashboard/${id}/content`,
+    label: "Pages and offers",
+    description: "Custom pages, banners and promotions.",
+    permission: "page.view",
+  },
+  {
     href: (id) => `/dashboard/${id}/orders`,
     label: "Orders",
     description: "Accept, ship and track.",

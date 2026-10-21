@@ -18,6 +18,10 @@ import {
   attributeValues,
   brands,
   categories,
+  pageBlocks,
+  pages,
+  placements,
+  placementTargets,
   productAttributes,
   productAttributeValues,
   productImageAttributeValues,
@@ -34,6 +38,7 @@ import {
   userPlatformRoles,
   variantAttributeValues,
 } from "../lib/db/schema/index.ts";
+import { seedContent } from "../lib/db/seed/content.ts";
 import { seedSystemRoles } from "../lib/db/seed/system-roles.ts";
 import {
   ADMIN,
@@ -75,6 +80,7 @@ async function reset() {
   // and CASCADE handles the foreign keys in one statement.
   await db.execute(sql`
     truncate table
+      ${placementTargets}, ${placements}, ${pageBlocks}, ${pages},
       ${variantAttributeValues}, ${productAttributeValues}, ${productAttributes},
       ${attributeValues}, ${attributes},
       ${productTags}, ${productVariants}, ${productImages}, ${products},
@@ -663,6 +669,12 @@ async function main() {
     ) k
     where p.id = k.id
   `);
+
+  const content = await seedContent(db, {
+    adminId,
+    storeId: firstStore.id,
+  });
+  console.log(`  ${content.pages} pages, ${content.placements} placements`);
 
   console.log("\nDone. Every seeded account uses the password:");
   console.log(`  ${SEED_PASSWORD}`);
