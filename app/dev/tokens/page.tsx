@@ -44,6 +44,8 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     defaultVariantId: null,
     ratingAverage: 4.6,
     ratingCount: 24,
+    stockDisplay: "when_low" as const,
+    lowStockThreshold: 5,
   },
   {
     id: "demo-2",
@@ -63,6 +65,8 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     defaultVariantId: null,
     ratingAverage: 4.6,
     ratingCount: 24,
+    stockDisplay: "when_low" as const,
+    lowStockThreshold: 5,
   },
   {
     id: "demo-3",
@@ -82,6 +86,8 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     defaultVariantId: null,
     ratingAverage: 4.6,
     ratingCount: 24,
+    stockDisplay: "when_low" as const,
+    lowStockThreshold: 5,
   },
   {
     id: "demo-4",
@@ -101,6 +107,8 @@ const DEMO_PRODUCTS: ProductListItem[] = [
     defaultVariantId: null,
     ratingAverage: 4.6,
     ratingCount: 24,
+    stockDisplay: "when_low" as const,
+    lowStockThreshold: 5,
   },
 ];
 

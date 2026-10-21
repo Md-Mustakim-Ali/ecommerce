@@ -50,6 +50,13 @@
       "when": 1788445736502,
       "tag": "0006_broad_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788446352410,
+      "tag": "0007_famous_marvel_boy",
+      "breakpoints": true
     }
   ]
 }

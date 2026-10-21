@@ -34,11 +34,15 @@ export function ProductDetail({
   attributes,
   variants,
   title,
+  stockDisplay,
+  lowStockThreshold,
 }: {
   images: DetailImage[];
   attributes: ProductAttribute[];
   variants: PickerVariant[];
   title: string;
+  stockDisplay?: "never" | "always" | "when_low";
+  lowStockThreshold?: number;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -95,6 +99,8 @@ export function ProductDetail({
       <OptionPicker
         attributes={attributes}
         variants={variants}
+        stockDisplay={stockDisplay}
+        lowStockThreshold={lowStockThreshold}
         onSelectionChange={handleSelection}
       />
     </div>

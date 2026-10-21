@@ -16,9 +16,42 @@ export type ProductFilters = {
   categorySlug?: string;
   brandSlugs?: string[];
   tagSlugs?: string[];
+  storeSlugs?: string[];
+  /**
+   * Attribute filters, keyed by attribute slug: { colour: ["navy"], size: ["m"] }.
+   *
+   * Values within one attribute are OR'd (navy or charcoal); different
+   * attributes are AND'd (navy AND medium). That is what shoppers expect and
+   * the opposite of what a naive implementation does.
+   */
+  attributes?: Record<string, string[]>;
   minCents?: number;
   maxCents?: number;
+  /** Minimum average rating, 1-5. */
+  minRating?: number;
+  /** Hide anything with no stock left. */
+  inStockOnly?: boolean;
+  /** Only products with a compare-at price above the current one. */
+  onSaleOnly?: boolean;
   sort?: ProductSort;
   page?: number;
   perPage?: number;
 };
+
+/** Query-string keys that are not attribute filters. */
+export const RESERVED_FILTER_KEYS = new Set([
+  "q",
+  "brand",
+  "tag",
+  "store",
+  "min",
+  "max",
+  "rating",
+  "stock",
+  "sale",
+  "sort",
+  "page",
+]);
+
+/** Attribute facets arrive as `a_colour=navy,charcoal`. */
+export const ATTRIBUTE_PARAM_PREFIX = "a_";

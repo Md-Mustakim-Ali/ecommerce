@@ -7,6 +7,7 @@ import { RatingStars } from "@/components/shop/rating-stars";
 import { SaveButton } from "@/components/shop/save-button";
 import { Badge } from "@/components/ui/badge";
 import type { ProductListItem } from "@/lib/catalog/queries";
+import { cardStockMessage } from "@/lib/catalog/stock";
 import { formatMoney } from "@/lib/money/format";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +42,14 @@ export function ProductCard({
     product.compareAtCents !== null &&
     product.compareAtCents > product.priceCents;
   const soldOut = product.stock <= 0;
-  const lowStock = !soldOut && product.stock <= 5;
+  // Uses the shared rule so a card cannot quote a summed total as though it
+  // were a buyable quantity.
+  const stock = cardStockMessage({
+    totalQuantity: product.stock,
+    display: product.stockDisplay,
+    lowStockThreshold: product.lowStockThreshold,
+  });
+  const lowStock = stock.kind === "low";
   const discount = onSale
     ? Math.round((1 - product.priceCents / (product.compareAtCents ?? 1)) * 100)
     : 0;
@@ -90,9 +98,7 @@ export function ProductCard({
               ) : onSale ? (
                 <Badge variant="default">-{discount}%</Badge>
               ) : null}
-              {lowStock ? (
-                <Badge variant="critical">Only {product.stock} left</Badge>
-              ) : null}
+              {lowStock ? <Badge variant="critical">{stock.text}</Badge> : null}
             </div>
           ) : null}
 

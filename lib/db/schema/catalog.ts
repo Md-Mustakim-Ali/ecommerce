@@ -147,6 +147,23 @@ export const categories = pgTable(
 // Products
 // ---------------------------------------------------------------------------
 
+/**
+ * How much stock detail a buyer sees.
+ *
+ * Sellers disagree about this and both positions are reasonable: an exact
+ * count is honest and creates urgency, but it also tells a competitor your
+ * inventory. `when_low` is the default because a number is most useful
+ * precisely when it is small.
+ */
+export const stockDisplay = pgEnum("stock_display", [
+  /** Never a number. Just in stock or sold out. */
+  "never",
+  /** Always the exact count. */
+  "always",
+  /** The count only once it drops to lowStockThreshold or below. */
+  "when_low",
+]);
+
 export const productStatus = pgEnum("product_status", [
   "draft",
   "active",
@@ -197,6 +214,15 @@ export const products = pgTable(
       (): SQL =>
         sql`setweight(to_tsvector('simple', coalesce(${products.title}, '')), 'A') || setweight(to_tsvector('simple', coalesce(${products.searchKeywords}, '')), 'B') || setweight(to_tsvector('simple', coalesce(${products.description}, '')), 'C')`,
     ),
+
+    /**
+     * Stock display is per product, decided by whoever manages the catalogue.
+     * The quantity itself always comes from the selected variant, never from
+     * the product total — a product with 40 units across ten combinations has
+     * 4 of the one you actually want.
+     */
+    stockDisplay: stockDisplay("stock_display").notNull().default("when_low"),
+    lowStockThreshold: integer("low_stock_threshold").notNull().default(5),
 
     publishedAt: timestamp("published_at", { withTimezone: true }),
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { AddToCart } from "@/components/shop/add-to-cart";
 import { Badge } from "@/components/ui/badge";
+import { type StockDisplay, stockMessage } from "@/lib/catalog/stock";
 import { formatMoney } from "@/lib/money/format";
 import { cn } from "@/lib/utils";
 
@@ -51,11 +52,15 @@ export function OptionPicker({
   attributes,
   variants,
   currency = "USD",
+  stockDisplay = "when_low",
+  lowStockThreshold = 5,
   onSelectionChange,
 }: {
   attributes: ProductAttribute[];
   variants: PickerVariant[];
   currency?: string;
+  stockDisplay?: StockDisplay;
+  lowStockThreshold?: number;
   onSelectionChange?: (selection: Record<string, string>) => void;
 }) {
   const variantAttributes = useMemo(
@@ -257,11 +262,33 @@ export function OptionPicker({
       })}
 
       <div className="flex flex-col gap-2">
-        {selected && selected.stock > 0 && selected.stock <= 5 ? (
-          <p className="text-critical text-sm">
-            Only {selected.stock} left in stock.
-          </p>
-        ) : null}
+        {/*
+          The quantity is the selected variant's, never the product total —
+          a product with 40 units across ten combinations has 4 of the one
+          being looked at.
+        */}
+        {(() => {
+          const message = stockMessage({
+            quantity: selected?.stock ?? null,
+            display: stockDisplay,
+            lowStockThreshold,
+            resolved: isComplete && Boolean(selected),
+          });
+          if (message.kind === "hidden") return null;
+          return (
+            <p
+              className={
+                message.kind === "low"
+                  ? "text-critical text-sm"
+                  : message.kind === "sold-out"
+                    ? "text-secondary-text text-sm"
+                    : "text-positive text-sm"
+              }
+            >
+              {message.text}
+            </p>
+          );
+        })()}
 
         <AddToCart
           variantId={isComplete ? (selected?.id ?? null) : null}

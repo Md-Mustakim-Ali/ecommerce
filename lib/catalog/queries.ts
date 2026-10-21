@@ -52,6 +52,8 @@ export type ProductListItem = {
   defaultVariantId: string | null;
   ratingAverage: number | null;
   ratingCount: number;
+  stockDisplay: "never" | "always" | "when_low";
+  lowStockThreshold: number;
 };
 
 /**
@@ -175,6 +177,41 @@ export async function listProducts(filters: ProductFilters = {}) {
     );
   }
 
+  if (filters.storeSlugs?.length) {
+    conditions.push(inArray(stores.slug, filters.storeSlugs));
+  }
+
+  if (filters.inStockOnly) {
+    conditions.push(gte(priceAgg.totalStock, 1));
+  }
+
+  if (filters.onSaleOnly) {
+    conditions.push(sql`${priceAgg.maxCompare} > ${priceAgg.minPrice}`);
+  }
+
+  if (filters.minRating !== undefined) {
+    conditions.push(sql`${reviewAgg.average} >= ${filters.minRating}`);
+  }
+
+  // One EXISTS per attribute. Values inside an attribute are OR'd; separate
+  // attributes are AND'd, because "navy or charcoal, in medium" is what a
+  // shopper means when they tick two colours and one size.
+  for (const [attributeSlug, valueSlugs] of Object.entries(
+    filters.attributes ?? {},
+  )) {
+    if (valueSlugs.length === 0) continue;
+    conditions.push(
+      sql`exists (
+        select 1 from ${productAttributeValues} pav
+        join ${attributes} a on a.id = pav.attribute_id
+        join ${attributeValues} av on av.id = pav.value_id
+        where pav.product_id = ${products.id}
+          and a.slug = ${attributeSlug}
+          and av.slug in ${valueSlugs}
+      )`,
+    );
+  }
+
   const where = and(...conditions);
 
   const orderBy = (() => {
@@ -215,6 +252,8 @@ export async function listProducts(filters: ProductFilters = {}) {
       defaultVariantId: priceAgg.defaultVariantId,
       ratingAverage: reviewAgg.average,
       ratingCount: sql<number>`coalesce(${reviewAgg.count}, 0)`,
+      stockDisplay: products.stockDisplay,
+      lowStockThreshold: products.lowStockThreshold,
     })
     .from(products)
     .innerJoin(stores, eq(stores.id, products.storeId))
@@ -235,6 +274,8 @@ export async function listProducts(filters: ProductFilters = {}) {
       .innerJoin(stores, eq(stores.id, products.storeId))
       .innerJoin(priceAgg, eq(priceAgg.productId, products.id))
       .leftJoin(brands, eq(brands.id, products.brandId))
+      // Joined even when unused, because a rating filter references it.
+      .leftJoin(reviewAgg, eq(reviewAgg.productId, products.id))
       .where(where),
   ]);
 
@@ -254,6 +295,8 @@ export async function getProductBySlug(slug: string) {
       title: products.title,
       description: products.description,
       attributes: products.attributes,
+      stockDisplay: products.stockDisplay,
+      lowStockThreshold: products.lowStockThreshold,
       storeId: stores.id,
       storeName: stores.name,
       storeSlug: stores.slug,

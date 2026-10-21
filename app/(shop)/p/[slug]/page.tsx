@@ -57,6 +57,8 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
 
       <ProductDetail
         title={product.title}
+        stockDisplay={product.stockDisplay}
+        lowStockThreshold={product.lowStockThreshold}
         images={product.images.map((image) => ({
           id: image.id,
           url: image.url,
