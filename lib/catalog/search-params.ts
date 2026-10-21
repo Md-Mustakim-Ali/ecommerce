@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { DEFAULT_PER_PAGE, type ProductFilters } from "./filters";
+import {
+  ATTRIBUTE_PARAM_PREFIX,
+  DEFAULT_PER_PAGE,
+  type ProductFilters,
+} from "./filters";
 
 /**
  * URL is the source of truth for filters.
@@ -16,8 +20,12 @@ const listSchema = z.object({
   q: z.string().trim().max(120).optional(),
   brand: z.union([z.string(), z.array(z.string())]).optional(),
   tag: z.union([z.string(), z.array(z.string())]).optional(),
+  store: z.union([z.string(), z.array(z.string())]).optional(),
   min: z.coerce.number().min(0).max(1_000_000).optional(),
   max: z.coerce.number().min(0).max(1_000_000).optional(),
+  rating: z.coerce.number().min(1).max(5).optional(),
+  stock: z.enum(["in"]).optional(),
+  sale: z.enum(["1"]).optional(),
   sort: z.enum(["relevance", "newest", "price-asc", "price-desc"]).optional(),
   page: z.coerce.number().int().min(1).max(500).optional(),
 });
@@ -52,11 +60,30 @@ export function parseProductFilters(
       ? [maxCents, minCents]
       : [minCents, maxCents];
 
+  // Attribute facets arrive as a_colour=navy,charcoal. Collected by prefix so
+  // adding an attribute needs no change here — the vocabulary lives in the
+  // database, not in this parser.
+  const attributeFilters: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!key.startsWith(ATTRIBUTE_PARAM_PREFIX)) continue;
+    const slug = key.slice(ATTRIBUTE_PARAM_PREFIX.length);
+    // A slug is [a-z0-9-]; anything else is somebody probing the query string.
+    if (!/^[\p{L}\p{N}-]+$/u.test(slug)) continue;
+    const values = toArray(value as string | string[] | undefined);
+    if (values) attributeFilters[slug] = values.slice(0, 20);
+  }
+
   return {
     q: data.q,
     categorySlug: extra.categorySlug,
     brandSlugs: toArray(data.brand),
     tagSlugs: toArray(data.tag),
+    storeSlugs: toArray(data.store),
+    attributes:
+      Object.keys(attributeFilters).length > 0 ? attributeFilters : undefined,
+    minRating: data.rating,
+    inStockOnly: data.stock === "in",
+    onSaleOnly: data.sale === "1",
     minCents: lo,
     maxCents: hi,
     sort: data.sort ?? (data.q ? "relevance" : "newest"),

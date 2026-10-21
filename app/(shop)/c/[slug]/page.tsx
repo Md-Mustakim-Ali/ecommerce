@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { FilterBar } from "@/components/shop/filter-bar";
+import { FilterPanel } from "@/components/shop/filter-panel";
 import { Pagination } from "@/components/shop/pagination";
 import { ProductGrid } from "@/components/shop/product-grid";
 import { ProductGridSkeleton } from "@/components/ui/skeleton";
 import { getSession } from "@/lib/auth/guards";
 import {
-  getBrandFacets,
+  getAllFacets,
   getCategoryBySlug,
   getSavedProductIds,
   listProducts,
@@ -31,9 +31,9 @@ async function Results({
   raw: Record<string, string | string[] | undefined>;
 }) {
   const filters = parseProductFilters(raw, { categorySlug: slug });
-  const [result, brandFacets] = await Promise.all([
+  const [result, facets] = await Promise.all([
     listProducts(filters),
-    getBrandFacets(slug),
+    getAllFacets(slug),
   ]);
 
   const session = await getSession();
@@ -44,8 +44,8 @@ async function Results({
 
   return (
     <>
-      <FilterBar
-        brands={brandFacets}
+      <FilterPanel
+        facets={facets}
         total={result.total}
         hasQuery={Boolean(filters.q)}
       />

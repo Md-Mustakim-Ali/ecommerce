@@ -590,3 +590,168 @@ export async function getSavedProductIds(
 
   return new Set(rows.map((r) => r.productId));
 }
+
+export type AttributeFacet = {
+  slug: string;
+  name: string;
+  kind: string;
+  values: {
+    slug: string;
+    value: string;
+    meta: Record<string, unknown>;
+    count: number;
+  }[];
+};
+
+/**
+ * Attribute facets for the filter panel, counted within the current category.
+ *
+ * Counts are computed against the category rather than the full catalogue, so
+ * a colour showing "12" means twelve here — a facet that promises results it
+ * cannot deliver is worse than no facet.
+ *
+ * Only filterable, approved attributes appear. A free-text attribute would
+ * produce an unbounded list of one-product facets.
+ */
+export async function getAttributeFacets(
+  categorySlug?: string,
+): Promise<AttributeFacet[]> {
+  const conditions = [
+    eq(products.status, "active"),
+    eq(stores.status, "active"),
+    eq(attributes.isFilterable, true),
+    eq(attributes.status, "approved"),
+  ];
+
+  if (categorySlug) {
+    const ids = await categoryAndDescendants(categorySlug);
+    if (ids.length === 0) return [];
+    conditions.push(inArray(products.categoryId, ids));
+  }
+
+  const rows = await db
+    .select({
+      attributeSlug: attributes.slug,
+      attributeName: attributes.name,
+      kind: attributes.kind,
+      attributePosition: attributes.position,
+      valueSlug: attributeValues.slug,
+      value: attributeValues.value,
+      meta: attributeValues.meta,
+      valuePosition: attributeValues.position,
+      count: sql<number>`count(distinct ${products.id})::int`,
+    })
+    .from(productAttributeValues)
+    .innerJoin(products, eq(products.id, productAttributeValues.productId))
+    .innerJoin(stores, eq(stores.id, products.storeId))
+    .innerJoin(
+      attributes,
+      eq(attributes.id, productAttributeValues.attributeId),
+    )
+    .innerJoin(
+      attributeValues,
+      eq(attributeValues.id, productAttributeValues.valueId),
+    )
+    .where(and(...conditions))
+    .groupBy(
+      attributes.slug,
+      attributes.name,
+      attributes.kind,
+      attributes.position,
+      attributeValues.slug,
+      attributeValues.value,
+      attributeValues.meta,
+      attributeValues.position,
+    )
+    .orderBy(asc(attributes.position), asc(attributeValues.position));
+
+  const facets = new Map<string, AttributeFacet>();
+  for (const row of rows) {
+    let facet = facets.get(row.attributeSlug);
+    if (!facet) {
+      facet = {
+        slug: row.attributeSlug,
+        name: row.attributeName,
+        kind: row.kind,
+        values: [],
+      };
+      facets.set(row.attributeSlug, facet);
+    }
+    facet.values.push({
+      slug: row.valueSlug,
+      value: row.value,
+      meta: row.meta ?? {},
+      count: row.count,
+    });
+  }
+
+  return [...facets.values()];
+}
+
+/** Stores that actually have listings, for the store facet. */
+export async function getStoreFacets(categorySlug?: string) {
+  const conditions = [
+    eq(products.status, "active"),
+    eq(stores.status, "active"),
+  ];
+
+  if (categorySlug) {
+    const ids = await categoryAndDescendants(categorySlug);
+    if (ids.length === 0) return [];
+    conditions.push(inArray(products.categoryId, ids));
+  }
+
+  return db
+    .select({
+      name: stores.name,
+      slug: stores.slug,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(products)
+    .innerJoin(stores, eq(stores.id, products.storeId))
+    .where(and(...conditions))
+    .groupBy(stores.name, stores.slug)
+    .orderBy(desc(sql`count(*)`))
+    .limit(20);
+}
+
+/** Tag facets for the filter panel. */
+export async function getTagFacets(categorySlug?: string) {
+  const conditions = [
+    eq(products.status, "active"),
+    eq(stores.status, "active"),
+    eq(tags.status, "approved"),
+  ];
+
+  if (categorySlug) {
+    const ids = await categoryAndDescendants(categorySlug);
+    if (ids.length === 0) return [];
+    conditions.push(inArray(products.categoryId, ids));
+  }
+
+  return db
+    .select({
+      name: tags.name,
+      slug: tags.slug,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(productTags)
+    .innerJoin(products, eq(products.id, productTags.productId))
+    .innerJoin(stores, eq(stores.id, products.storeId))
+    .innerJoin(tags, eq(tags.id, productTags.tagId))
+    .where(and(...conditions))
+    .groupBy(tags.name, tags.slug)
+    .orderBy(desc(sql`count(*)`))
+    .limit(20);
+}
+
+/** Everything the filter panel needs, in one round of parallel queries. */
+export async function getAllFacets(categorySlug?: string) {
+  const [brands, stores, attributes, tags] = await Promise.all([
+    getBrandFacets(categorySlug),
+    getStoreFacets(categorySlug),
+    getAttributeFacets(categorySlug),
+    getTagFacets(categorySlug),
+  ]);
+  return { brands, stores, attributes, tags };
+}

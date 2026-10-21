@@ -113,3 +113,47 @@ describe("toggleParam", () => {
     expect(result).not.toContain("page");
   });
 });
+
+describe("parseProductFilters — extended facets", () => {
+  it("collects attribute facets by prefix", () => {
+    const filters = parseProductFilters({
+      a_colour: "navy,charcoal",
+      a_size: "m",
+    });
+    expect(filters.attributes).toEqual({
+      colour: ["navy", "charcoal"],
+      size: ["m"],
+    });
+  });
+
+  it("ignores attribute keys that are not slug-shaped", () => {
+    // The query string is attacker-controlled; a key like a_'; drop table
+    // must never reach the query builder.
+    const filters = parseProductFilters({ "a_colour; drop table": "navy" });
+    expect(filters.attributes).toBeUndefined();
+  });
+
+  it("caps the values per attribute", () => {
+    const many = Array.from({ length: 40 }, (_, i) => `v${i}`).join(",");
+    const filters = parseProductFilters({ a_colour: many });
+    expect(filters.attributes?.colour).toHaveLength(20);
+  });
+
+  it("parses the boolean and rating facets", () => {
+    const filters = parseProductFilters({
+      stock: "in",
+      sale: "1",
+      rating: "4",
+      store: "oakline",
+    });
+    expect(filters.inStockOnly).toBe(true);
+    expect(filters.onSaleOnly).toBe(true);
+    expect(filters.minRating).toBe(4);
+    expect(filters.storeSlugs).toEqual(["oakline"]);
+  });
+
+  it("drops an out-of-range rating rather than throwing", () => {
+    expect(parseProductFilters({ rating: "9" }).minRating).toBeUndefined();
+    expect(parseProductFilters({ stock: "maybe" }).inStockOnly).toBe(false);
+  });
+});
