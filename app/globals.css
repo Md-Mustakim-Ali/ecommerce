@@ -118,6 +118,15 @@
     inset 0 1px 0 0 oklch(1 0 0 / 0.7),
     inset 0 1px 0 0 oklch(1 0 0 / 0.06)
   );
+  /* -- Skeleton ------------------------------------------------------------
+     Its own token rather than reusing --surface-sunken. A skeleton sits on
+     --surface-1 (a card), and sunken was tuned to sit on --surface-0 (the
+     page), so reusing it left the placeholder almost invisible against the
+     card it was standing in for. This is deliberately a clear step away from
+     surface-1 in both directions. */
+  --skeleton: light-dark(oklch(0.888 0.009 258), oklch(0.328 0.018 258));
+  --skeleton-sheen: light-dark(oklch(1 0 0 / 0.85), oklch(1 0 0 / 0.11));
+
   /* Inputs read as recessed rather than raised, so they get the inverse of an
      elevation shadow. */
   --well-inset: light-dark(
@@ -308,6 +317,7 @@ html.dark {
   --color-critical-muted: var(--critical-muted);
   --color-warning: var(--warning);
 
+  --color-skeleton: var(--skeleton);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-ring: var(--ring);
@@ -578,7 +588,7 @@ html.dark {
     background-image: linear-gradient(
       90deg,
       transparent,
-      light-dark(oklch(1 0 0 / 0.65), oklch(1 0 0 / 0.06)),
+      var(--skeleton-sheen),
       transparent
     );
     animation: shimmer-sweep 1.6s var(--ease-in-out) infinite;

@@ -199,6 +199,42 @@ describe("gamut", () => {
   });
 });
 
+describe("skeleton visibility", () => {
+  const lightnessOf = (value: string) =>
+    Number.parseFloat(value.match(/oklch\(\s*([\d.]+)/)?.[1] ?? "0");
+
+  it("is clearly distinguishable from the card it sits on", () => {
+    // A skeleton that blends into its container communicates nothing. This
+    // asserts a real lightness step against --surface-1, which is the surface
+    // skeletons actually sit on, in both themes.
+    const skeleton = pair("skeleton");
+    const surface1 = pair("surface-1");
+
+    const lightDelta = Math.abs(
+      lightnessOf(surface1.light) - lightnessOf(skeleton.light),
+    );
+    const darkDelta = Math.abs(
+      lightnessOf(surface1.dark) - lightnessOf(skeleton.dark),
+    );
+
+    expect(
+      lightDelta,
+      `light delta ${lightDelta.toFixed(3)}`,
+    ).toBeGreaterThanOrEqual(0.07);
+    expect(
+      darkDelta,
+      `dark delta ${darkDelta.toFixed(3)}`,
+    ).toBeGreaterThanOrEqual(0.07);
+  });
+
+  it("does not collide with --surface-sunken", () => {
+    // If these converge, someone has "simplified" the skeleton back onto the
+    // sunken token and reintroduced the invisibility.
+    expect(pair("skeleton").light).not.toBe(pair("surface-sunken").light);
+    expect(pair("skeleton").dark).not.toBe(pair("surface-sunken").dark);
+  });
+});
+
 describe("browser theme-color", () => {
   it("matches --surface-0 in both themes", () => {
     // The <meta name="theme-color"> values in app/layout.tsx are the one place

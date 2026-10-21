@@ -71,8 +71,12 @@ export const roles = pgTable(
   (t) => [
     // Postgres treats NULLs as distinct, so a single unique(store_id, slug)
     // would let two platform roles share a slug. Two partial indexes instead.
-    uniqueIndex("roles_global_slug_key")
-      .on(t.slug)
+    //
+    // Scoped by `scope` as well: a store-scope "finance" template and a
+    // platform-scope "finance" role both have a null store_id and are entirely
+    // different things, so slug alone would wrongly collide them.
+    uniqueIndex("roles_global_scope_slug_key")
+      .on(t.scope, t.slug)
       .where(sql`${t.storeId} is null`),
     uniqueIndex("roles_store_slug_key")
       .on(t.storeId, t.slug)
