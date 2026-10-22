@@ -19,4 +19,5 @@ export * from "./rbac";
 export * from "./refunds";
 export * from "./reviews";
 export * from "./saved";
+export * from "./settings";
 export * from "./stores";

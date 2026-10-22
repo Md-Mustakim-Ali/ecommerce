@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/guards";
 import { getCart } from "@/lib/cart";
 import { resolveDiscountForCart } from "@/lib/discounts/resolve";
-import { shippingFor } from "@/lib/orders/shipping";
+import { getPlatformSettings, shippingFor } from "@/lib/settings";
 
 /**
  * Checking a discount code from the checkout form.
@@ -54,7 +54,7 @@ export async function checkDiscountAction(
   const outcome = await resolveDiscountForCart({
     code: parsed.data.code,
     cart,
-    shippingCents: shippingFor(cart.subtotalCents),
+    shippingCents: shippingFor(cart.subtotalCents, await getPlatformSettings()),
     userId: session?.user.id ?? null,
     email: session?.user.email ?? parsed.data.email ?? null,
   });

@@ -48,8 +48,8 @@ have been closed since — re-run the command before trusting the count.
 | Capability | Permission | State |
 |---|---|---|
 | Approve / suspend stores | `platform.store.approve`, `platform.store.suspend` | **done** |
-| Review proposed attributes | `platform.attribute.review` | actions **done** (merge, approve/reject); the queue UI is not built yet |
-| Category tree management | `platform.category.manage` | actions **done**; the tree UI is not built yet |
+| Review proposed attributes | `platform.attribute.review` | **done** — merge-first, with trigram near-matches surfaced |
+| Category tree management | `platform.category.manage` | **done** |
 | View any order | `platform.order.view` | **done** |
 | Approve refunds | `platform.refund.approve` | **done** |
 | Initiate payouts | `platform.payout.initiate` | **done** — amount recomputed under a row lock; failure reverses by adding an entry |
@@ -57,7 +57,7 @@ have been closed since — re-run the command before trusting the count.
 | Moderate reviews | `platform.review.moderate` | **done** — removed reviews stop counting toward the rating |
 | User lookup / suspend | `platform.user.view`, `platform.user.suspend` | **done** — suspension revokes every session |
 | Platform-scope roles | `platform.role.manage` | missing — store-scope role editor exists and could be reused |
-| Settings: commission rate | `platform.settings.manage` | missing — commission is `DEFAULT_COMMISSION_BPS` in code |
+| Settings: commission rate | `platform.settings.manage` | **done** — new orders only; past ones keep their snapshotted rate |
 | Platform audit log | `platform.audit.view` | **done** |
 
 ## Buyer

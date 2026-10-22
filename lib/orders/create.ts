@@ -37,6 +37,15 @@ export type PlaceOrderInput = {
    * time a checkout failed on stock.
    */
   discount?: { id: string; code: string; amountCents: number };
+  /**
+   * The rate at the moment of purchase.
+   *
+   * Passed in rather than read here, so the rate that priced the order is the
+   * one recorded on it. sub_orders.commission_cents is then the permanent
+   * record — changing the platform rate later must never restate what a past
+   * order earned.
+   */
+  commissionBps?: number;
 };
 
 export type PlaceOrderResult =
@@ -147,6 +156,7 @@ export async function placeOrder(
     const totals = buildOrderTotals({
       lines,
       shippingCents: input.shippingCents,
+      commissionBps: input.commissionBps,
       taxCents: input.taxCents ?? 0,
       discountCents: input.discountCents ?? 0,
     });

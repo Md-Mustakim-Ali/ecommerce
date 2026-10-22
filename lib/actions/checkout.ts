@@ -9,8 +9,8 @@ import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
 import { resolveDiscountForCart } from "@/lib/discounts/resolve";
 import { placeOrder } from "@/lib/orders/create";
-import { shippingFor } from "@/lib/orders/shipping";
 import { paymentProvider } from "@/lib/payments";
+import { getPlatformSettings, shippingFor } from "@/lib/settings";
 
 /**
  * Checkout.
@@ -78,7 +78,11 @@ export async function placeOrderAction(
 
   const cartId = await getOrCreateCartId();
 
-  let shippingCents = shippingFor(cart.subtotalCents);
+  // Read once and passed down, so the rate that priced the order is the one
+  // recorded on it. Reading it again inside placeOrder could pick up a change
+  // made between the two calls.
+  const settings = await getPlatformSettings();
+  let shippingCents = shippingFor(cart.subtotalCents, settings);
   let discountCents = 0;
   let redeeming: { id: string; code: string; amountCents: number } | undefined;
 
@@ -116,6 +120,7 @@ export async function placeOrderAction(
     shippingCents,
     discountCents,
     discount: redeeming,
+    commissionBps: settings.commissionBps,
   });
 
   if (!result.ok) return { ok: false, message: result.message };

@@ -25,6 +25,11 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
     permission: "platform.brand.review",
   },
   {
+    href: "/admin/categories",
+    label: "Categories",
+    permission: "platform.category.manage",
+  },
+  {
     href: "/admin/content",
     label: "Content",
     permission: "platform.page.manage",
@@ -63,6 +68,11 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
   {
     href: "/admin/discounts",
     label: "Discounts",
+    permission: "platform.settings.manage",
+  },
+  {
+    href: "/admin/settings",
+    label: "Settings",
     permission: "platform.settings.manage",
   },
   {

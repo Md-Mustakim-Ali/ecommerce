@@ -1,9 +1,11 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { pendingAttributesAction } from "@/lib/actions/moderation";
 import { getPlatformAccess } from "@/lib/auth/access";
 import { db } from "@/lib/db";
 import { brands, products, tags } from "@/lib/db/schema";
+import { AttributeQueue } from "./attribute-queue";
 import { ReviewQueue } from "./review-queue";
 
 export const metadata: Metadata = { title: "Catalog review" };
@@ -66,11 +68,17 @@ export default async function CatalogReviewPage() {
 
   const canReviewBrands = access.permissions.has("platform.brand.review");
   const canReviewTags = access.permissions.has("platform.tag.review");
-  if (!canReviewBrands && !canReviewTags) notFound();
+  const canReviewAttributes = access.permissions.has(
+    "platform.attribute.review",
+  );
+  if (!canReviewBrands && !canReviewTags && !canReviewAttributes) notFound();
 
-  const [pendingBrands, pendingTags] = await Promise.all([
+  const [pendingBrands, pendingTags, attributeQueue] = await Promise.all([
     canReviewBrands ? pendingWithSuggestions("brand") : Promise.resolve([]),
     canReviewTags ? pendingWithSuggestions("tag") : Promise.resolve([]),
+    canReviewAttributes
+      ? pendingAttributesAction()
+      : Promise.resolve({ attributes: [], values: [] }),
   ]);
 
   return (
@@ -87,6 +95,27 @@ export default async function CatalogReviewPage() {
         <ReviewQueue kind="brand" items={pendingBrands} />
       ) : null}
       {canReviewTags ? <ReviewQueue kind="tag" items={pendingTags} /> : null}
+
+      {canReviewAttributes ? (
+        <AttributeQueue
+          attributes={attributeQueue.attributes.map((a) => ({
+            id: a.id,
+            name: a.name,
+            slug: a.slug,
+            kind: a.kind,
+            unit: a.unit,
+            usage: a.usage,
+          }))}
+          values={attributeQueue.values.map((v) => ({
+            id: v.id,
+            value: v.value,
+            slug: v.slug,
+            attributeName: v.attributeName,
+            usage: v.usage,
+            similar: v.similar,
+          }))}
+        />
+      ) : null}
     </div>
   );
 }

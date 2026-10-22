@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth/guards";
 import { getCart } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { addresses } from "@/lib/db/schema";
-import { shippingFor } from "@/lib/orders/shipping";
+import { getPlatformSettings, shippingFor } from "@/lib/settings";
 import { CheckoutForm } from "./checkout-form";
 
 export const metadata: Metadata = { title: "Checkout" };
@@ -46,7 +46,8 @@ export default async function CheckoutPage() {
 
   // Shipping is shown here, before the final step. AGENTS.md is explicit that
   // it must never be revealed at the end.
-  const shippingCents = shippingFor(cart.subtotalCents);
+  const settings = await getPlatformSettings();
+  const shippingCents = shippingFor(cart.subtotalCents, settings);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6">

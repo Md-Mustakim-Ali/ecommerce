@@ -78,6 +78,13 @@
       "when": 1788456774651,
       "tag": "0010_small_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788457845727,
+      "tag": "0011_dark_gargoyle",
+      "breakpoints": true
     }
   ]
 }
