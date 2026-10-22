@@ -3,16 +3,20 @@ import Link from "next/link";
 import { ProductCard } from "@/components/shop/product-card";
 import { Button } from "@/components/ui/button";
 import type { ProductListItem } from "@/lib/catalog/queries";
+import { cn } from "@/lib/utils";
 
 export function ProductGrid({
   products,
   savedIds,
+  className,
   emptyTitle = "Nothing here yet",
   emptyBody = "Try a different category, or widen the filters.",
 }: {
   products: ProductListItem[];
   /** Which of these the signed-in user has saved. Empty for guests. */
   savedIds?: ReadonlySet<string>;
+  /** Overrides the column counts. Used by a store's layout preset. */
+  className?: string;
   emptyTitle?: string;
   emptyBody?: string;
 }) {
@@ -35,7 +39,12 @@ export function ProductGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+    <div
+      className={cn(
+        "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4",
+        className,
+      )}
+    >
       {products.map((product, index) => (
         <ProductCard
           key={product.id}

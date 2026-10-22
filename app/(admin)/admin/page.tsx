@@ -82,7 +82,15 @@ export default async function AdminOverviewPage() {
       </div>
 
       <p className="text-secondary-text text-sm">
-        Sales, commission and payout figures land here once checkout exists.
+        Revenue, commission and forecasts are on{" "}
+        <Link href="/admin/analytics" className="underline underline-offset-4">
+          Analytics
+        </Link>
+        ; money owed to sellers is on{" "}
+        <Link href="/admin/payouts" className="underline underline-offset-4">
+          Payouts
+        </Link>
+        .
       </p>
     </div>
   );

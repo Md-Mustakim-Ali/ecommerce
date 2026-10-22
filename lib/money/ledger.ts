@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import type { Db } from "@/lib/db";
+import type { Db, DbOrTx } from "@/lib/db";
 import { ledgerEntries, orders, subOrders } from "@/lib/db/schema";
 
 /**
@@ -232,7 +232,7 @@ export async function recordRefund(
  * thing that can silently drift.
  */
 export async function storeBalance(
-  db: Db,
+  db: DbOrTx,
   storeId: string,
   currency: string,
 ): Promise<bigint> {
@@ -249,7 +249,7 @@ export async function storeBalance(
 }
 
 /** Ledger rows for a store, newest first. */
-export async function storeLedger(db: Db, storeId: string, limit = 50) {
+export async function storeLedger(db: DbOrTx, storeId: string, limit = 50) {
   return db
     .select()
     .from(ledgerEntries)

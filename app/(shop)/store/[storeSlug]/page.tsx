@@ -11,6 +11,7 @@ import { getSession } from "@/lib/auth/guards";
 import { getSavedProductIds, listProducts } from "@/lib/catalog/queries";
 import { db } from "@/lib/db";
 import { pages, stores } from "@/lib/db/schema";
+import { accentHex } from "@/lib/stores/appearance";
 
 async function getStore(slug: string) {
   return db.query.stores.findFirst({
@@ -23,6 +24,8 @@ async function getStore(slug: string) {
       logoUrl: true,
       bannerUrl: true,
       supportEmail: true,
+      accentColor: true,
+      layoutPreset: true,
       createdAt: true,
     },
   });
@@ -95,8 +98,27 @@ export default async function StoreFrontPage({
 
   const route = { kind: "store" as const, storeSlug: store.slug };
 
+  // The seller's accent, scoped to this page only. Set as a CSS variable
+  // rather than passed to components, so it reaches everything inside without
+  // any of them needing to know a store can be themed.
+  const accent = accentHex(store.accentColor);
+
+  // The preset changes the grid density and nothing else. Product pages, cart
+  // and checkout stay identical across every store.
+  const columns =
+    store.layoutPreset === "editorial"
+      ? "sm:grid-cols-2 lg:grid-cols-3"
+      : store.layoutPreset === "gallery"
+        ? "grid-cols-2 lg:grid-cols-4"
+        : "sm:grid-cols-2 lg:grid-cols-4";
+
   return (
-    <div className="flex flex-col">
+    <div
+      className="flex flex-col"
+      style={
+        accent ? ({ "--accent": accent } as React.CSSProperties) : undefined
+      }
+    >
       {store.bannerUrl ? (
         <div className="relative h-40 w-full overflow-hidden sm:h-56 lg:h-64">
           <Image
@@ -200,6 +222,7 @@ export default async function StoreFrontPage({
         <ProductGrid
           products={listing.items}
           savedIds={savedIds}
+          className={columns}
           emptyTitle="Nothing listed yet"
           emptyBody="This seller has not published any products."
         />

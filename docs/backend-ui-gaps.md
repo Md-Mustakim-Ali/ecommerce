@@ -19,7 +19,8 @@ for p in $(grep -o '"[a-z_]*\.[a-z_.]*"' lib/auth/permissions.ts | tr -d '"' | s
 done
 ```
 
-Last run: 2026-09-03. 26 of 62 permissions unused.
+Last run: 2026-09-03. 26 of 62 permissions unused at that point; several
+have been closed since — re-run the command before trusting the count.
 
 ---
 
@@ -31,8 +32,8 @@ Last run: 2026-09-03. 26 of 62 permissions unused.
 | Attribute & value authoring, dedup on add | `attribute.propose` | **done** |
 | Stock display controls | `products.stock_display` | **done** |
 | Image upload, and tagging images to attribute values | `product_images`, `product_image_attribute_values` | **done** |
-| Store profile: name, logo, banner, description, support email | `store.profile.update` | missing |
-| Store appearance: accent colour, layout preset | `store.theme.update` | missing — columns exist on `stores` |
+| Store profile: name, logo, banner, description, support email | `store.profile.update` | **done** |
+| Store appearance: accent colour, layout preset | `store.theme.update` | **done** — fixed palette, three layout presets |
 | Refund request | `order.refund` | missing — `recordRefund()` exists and is tested |
 | Internal order notes | `order.note` | missing — no column yet either |
 | Message a buyer | `customer.contact` | missing — no messaging model |
@@ -46,12 +47,12 @@ Last run: 2026-09-03. 26 of 62 permissions unused.
 
 | Capability | Permission | State |
 |---|---|---|
-| Approve / suspend stores | `platform.store.approve`, `platform.store.suspend` | missing — `/admin` links to `/admin/stores`, which does not exist |
+| Approve / suspend stores | `platform.store.approve`, `platform.store.suspend` | **done** |
 | Review proposed attributes | `platform.attribute.review` | missing — brands and tags have a queue; attributes do not |
 | Category tree management | `platform.category.manage` | missing |
 | View any order | `platform.order.view` | missing |
 | Approve refunds | `platform.refund.approve` | missing |
-| Initiate payouts | `platform.payout.initiate` | missing — `payouts` table and seller-side history exist; nothing writes a payout |
+| Initiate payouts | `platform.payout.initiate` | **done** — amount recomputed under a row lock; failure reverses by adding an entry |
 | Moderate products | `platform.product.moderate` | missing |
 | Moderate reviews | `platform.review.moderate` | missing — `reviews.status` supports flagged/removed |
 | User lookup / suspend | `platform.user.view`, `platform.user.suspend` | missing |

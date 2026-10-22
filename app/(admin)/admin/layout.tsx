@@ -31,9 +31,16 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
   },
   { href: "/admin/stores", label: "Stores", permission: "platform.store.view" },
   {
+    href: "/admin/analytics",
+    label: "Analytics",
+    permission: "platform.finance.report",
+  },
+  {
+    // Gated on the permission the page itself requires. Listing it under
+    // finance.report would show the link to someone who then gets a 404.
     href: "/admin/payouts",
     label: "Payouts",
-    permission: "platform.finance.report",
+    permission: "platform.payout.initiate",
   },
 ];
 

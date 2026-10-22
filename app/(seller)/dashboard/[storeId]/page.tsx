@@ -49,6 +49,12 @@ const SECTIONS: {
     permission: "payout.view",
   },
   {
+    href: (id) => `/dashboard/${id}/settings`,
+    label: "Store settings",
+    description: "Name, logo, banner and appearance.",
+    permission: "store.profile.update",
+  },
+  {
     href: (id) => `/dashboard/${id}/analytics`,
     label: "Analytics",
     description: "Trends, forecast, concentration and what to reorder.",

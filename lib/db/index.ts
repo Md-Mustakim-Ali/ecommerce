@@ -23,3 +23,12 @@ export const db = drizzle(client, { schema, casing: "snake_case" });
 
 export type Db = typeof db;
 export { schema };
+
+/**
+ * Either the pool or a transaction.
+ *
+ * Read helpers that are safe to run inside a transaction take this instead of
+ * `Db`, so a caller holding a lock can reuse them without the query escaping
+ * to a second connection — which would read outside the lock and defeat it.
+ */
+export type DbOrTx = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
