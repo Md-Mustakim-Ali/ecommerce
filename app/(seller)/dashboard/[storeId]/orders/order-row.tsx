@@ -12,6 +12,7 @@ import {
   markDeliveredAction,
   shipOrderAction,
 } from "@/lib/actions/fulfilment";
+import { requestRefundAction } from "@/lib/actions/refunds";
 import type { AddressSnapshot } from "@/lib/db/schema";
 import { formatMoney } from "@/lib/money/format";
 
@@ -78,11 +79,17 @@ export function OrderRow({
 }: {
   storeId: string;
   order: SellerOrder;
-  permissions: { accept: boolean; ship: boolean; cancel: boolean };
+  permissions: {
+    accept: boolean;
+    ship: boolean;
+    cancel: boolean;
+    refund: boolean;
+  };
 }) {
   const [open, setOpen] = useState(false);
   const [shipping, setShipping] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [refunding, setRefunding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -100,6 +107,7 @@ export function OrderRow({
       }
       setShipping(false);
       setCancelling(false);
+      setRefunding(false);
     });
   }
 
@@ -180,6 +188,26 @@ export function OrderRow({
                 <Loader2 className="animate-spin" aria-hidden />
               ) : null}
               Mark delivered
+            </Button>
+          ) : null}
+
+          {/*
+            Refunding is asking, not doing. The seller has order.refund; only
+            platform.refund.approve moves money, so nothing happens here
+            beyond a request being filed.
+          */}
+          {permissions.refund &&
+          (order.status === "shipped" || order.status === "delivered") ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                setRefunding((value) => !value);
+                setOpen(true);
+              }}
+            >
+              Refund
             </Button>
           ) : null}
 
@@ -327,6 +355,52 @@ export function OrderRow({
                   <Loader2 className="animate-spin" aria-hidden />
                 ) : null}
                 Confirm shipped
+              </Button>
+            </form>
+          ) : null}
+
+          {refunding && !closed ? (
+            <form
+              className="flex flex-wrap items-end gap-3 rounded-md bg-surface-2 p-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const data = new FormData(event.currentTarget);
+                run(() =>
+                  requestRefundAction({
+                    storeId,
+                    subOrderId: order.id,
+                    amount: String(data.get("amount") ?? ""),
+                    reason: String(data.get("reason") ?? ""),
+                  }),
+                );
+              }}
+            >
+              <div className="grid w-32 gap-1.5">
+                <Label htmlFor={`amount-${order.id}`}>Amount</Label>
+                <Input
+                  id={`amount-${order.id}`}
+                  name="amount"
+                  inputMode="decimal"
+                  placeholder={(
+                    (order.subtotalCents + order.shippingCents) /
+                    100
+                  ).toFixed(2)}
+                />
+              </div>
+              <div className="grid flex-1 gap-1.5">
+                <Label htmlFor={`refund-reason-${order.id}`}>Reason</Label>
+                <Input
+                  id={`refund-reason-${order.id}`}
+                  name="reason"
+                  placeholder="Arrived damaged"
+                  required
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={pending}>
+                {pending ? (
+                  <Loader2 className="animate-spin" aria-hidden />
+                ) : null}
+                Request refund
               </Button>
             </form>
           ) : null}

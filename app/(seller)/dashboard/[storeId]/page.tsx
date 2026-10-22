@@ -49,6 +49,12 @@ const SECTIONS: {
     permission: "payout.view",
   },
   {
+    href: (id) => `/dashboard/${id}/discounts`,
+    label: "Discounts",
+    description: "Codes that come off your own items.",
+    permission: "placement.manage",
+  },
+  {
     href: (id) => `/dashboard/${id}/settings`,
     label: "Store settings",
     description: "Name, logo, banner and appearance.",

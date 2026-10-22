@@ -36,6 +36,16 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
     permission: "platform.finance.report",
   },
   {
+    href: "/admin/refunds",
+    label: "Refunds",
+    permission: "platform.refund.approve",
+  },
+  {
+    href: "/admin/discounts",
+    label: "Discounts",
+    permission: "platform.settings.manage",
+  },
+  {
     // Gated on the permission the page itself requires. Listing it under
     // finance.report would show the link to someone who then gets a 404.
     href: "/admin/payouts",

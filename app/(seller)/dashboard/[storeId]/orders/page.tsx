@@ -61,6 +61,7 @@ export default async function StoreOrdersPage({
     accept: access.permissions.has("order.accept"),
     ship: access.permissions.has("order.ship"),
     cancel: access.permissions.has("order.cancel"),
+    refund: access.permissions.has("order.refund"),
   };
 
   const revenue = orders
@@ -150,7 +151,10 @@ export default async function StoreOrdersPage({
         </ul>
       )}
 
-      {!permissions.accept && !permissions.ship && !permissions.cancel ? (
+      {!permissions.accept &&
+      !permissions.ship &&
+      !permissions.cancel &&
+      !permissions.refund ? (
         <p className="text-tertiary-text text-xs">
           <Badge variant="outline">Read only</Badge> Your role can view orders
           but not act on them.

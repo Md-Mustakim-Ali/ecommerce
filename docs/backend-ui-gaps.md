@@ -34,7 +34,7 @@ have been closed since — re-run the command before trusting the count.
 | Image upload, and tagging images to attribute values | `product_images`, `product_image_attribute_values` | **done** |
 | Store profile: name, logo, banner, description, support email | `store.profile.update` | **done** |
 | Store appearance: accent colour, layout preset | `store.theme.update` | **done** — fixed palette, three layout presets |
-| Refund request | `order.refund` | missing — `recordRefund()` exists and is tested |
+| Refund request | `order.refund` | **done** — files a request; only the platform moves money |
 | Internal order notes | `order.note` | missing — no column yet either |
 | Message a buyer | `customer.contact` | missing — no messaging model |
 | Delete a product | `product.delete` | missing |
@@ -51,7 +51,7 @@ have been closed since — re-run the command before trusting the count.
 | Review proposed attributes | `platform.attribute.review` | missing — brands and tags have a queue; attributes do not |
 | Category tree management | `platform.category.manage` | missing |
 | View any order | `platform.order.view` | missing |
-| Approve refunds | `platform.refund.approve` | missing |
+| Approve refunds | `platform.refund.approve` | **done** |
 | Initiate payouts | `platform.payout.initiate` | **done** — amount recomputed under a row lock; failure reverses by adding an entry |
 | Moderate products | `platform.product.moderate` | missing |
 | Moderate reviews | `platform.review.moderate` | missing — `reviews.status` supports flagged/removed |
