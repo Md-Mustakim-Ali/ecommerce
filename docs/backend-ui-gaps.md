@@ -30,7 +30,7 @@ Last run: 2026-09-03. 26 of 62 permissions unused.
 | Product list, editor, variant matrix | `product.update`, `variant.manage` | **done** |
 | Attribute & value authoring, dedup on add | `attribute.propose` | **done** |
 | Stock display controls | `products.stock_display` | **done** |
-| Image upload, and tagging images to attribute values | `product_images`, `product_image_attribute_values` | missing — the storefront already switches the photo on option change, but only seeded rows carry tags |
+| Image upload, and tagging images to attribute values | `product_images`, `product_image_attribute_values` | **done** |
 | Store profile: name, logo, banner, description, support email | `store.profile.update` | missing |
 | Store appearance: accent colour, layout preset | `store.theme.update` | missing — columns exist on `stores` |
 | Refund request | `order.refund` | missing — `recordRefund()` exists and is tested |
@@ -71,7 +71,8 @@ Last run: 2026-09-03. 26 of 62 permissions unused.
 | Capability | State |
 |---|---|
 | Transactional email | none. `requireEmailVerification` is off and seeded users are marked verified, because nothing can send |
-| Image hosting | none. `product_images.url` holds picsum placeholders; there is no upload path |
+| Real payments | deliberate. Deferred to a separate project; the order page offers a development-only demo settlement that runs the real ledger split |
+| Image hosting | local disk via `lib/storage`. Development only — swap the adapter in `lib/storage/index.ts` for S3 or R2 |
 | Rate limiting | none |
 
 ---
