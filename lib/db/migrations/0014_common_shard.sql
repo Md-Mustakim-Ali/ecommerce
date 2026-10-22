@@ -1,0 +1,1 @@
+ALTER TYPE "public"."placement_slot" ADD VALUE 'in_grid';

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/guards";
 import { getSavedProductIds, listProducts } from "@/lib/catalog/queries";
+import { getGridOffers } from "@/lib/content/queries";
 import { db } from "@/lib/db";
 import { pages, stores } from "@/lib/db/schema";
 import { accentHex } from "@/lib/stores/appearance";
@@ -97,6 +98,7 @@ export default async function StoreFrontPage({
   const totalPages = Math.max(1, Math.ceil(listing.total / listing.perPage));
 
   const route = { kind: "store" as const, storeSlug: store.slug };
+  const gridOffers = await getGridOffers(route);
 
   // The seller's accent, scoped to this page only. Set as a CSS variable
   // rather than passed to components, so it reaches everything inside without
@@ -222,6 +224,7 @@ export default async function StoreFrontPage({
         <ProductGrid
           products={listing.items}
           savedIds={savedIds}
+          offers={gridOffers}
           className={columns}
           emptyTitle="Nothing listed yet"
           emptyBody="This seller has not published any products."

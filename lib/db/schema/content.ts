@@ -131,6 +131,14 @@ export const placementSlot = pgEnum("placement_slot", [
   "product_sidebar",
   /** Under the description and tags. */
   "product_below_details",
+
+  /**
+   * A cell inside a product grid, among the listings.
+   *
+   * The one position that competes with the products for attention rather than
+   * framing them, which is why the grid never leads with it — see ProductGrid.
+   */
+  "in_grid",
 ]);
 
 /**
@@ -140,6 +148,11 @@ export const placementSlot = pgEnum("placement_slot", [
  * above the header or wrap the whole page, so a seller placing one there would
  * be dressing a page they do not own. Sellers get the product-page positions,
  * which sit inside their own listing.
+ *
+ * `in_grid` is included because a store-scoped placement can only ever resolve
+ * on a route carrying that store's slug — see getPlacementsForRoute — so a
+ * seller's grid card reaches their own store page and nowhere else. The
+ * marketplace's category and search grids are unreachable from here.
  */
 export const STORE_ASSIGNABLE_SLOTS = [
   "product_top",
@@ -147,6 +160,7 @@ export const STORE_ASSIGNABLE_SLOTS = [
   "product_after_options",
   "product_sidebar",
   "product_below_details",
+  "in_grid",
 ] as const;
 
 export type PlacementSlotName = (typeof placementSlot.enumValues)[number];

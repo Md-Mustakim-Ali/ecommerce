@@ -16,6 +16,7 @@ import {
   listProducts,
 } from "@/lib/catalog/queries";
 import { parseProductFilters } from "@/lib/catalog/search-params";
+import { getGridOffers } from "@/lib/content/queries";
 
 export async function generateMetadata({
   params,
@@ -28,14 +29,17 @@ export async function generateMetadata({
 async function Results({
   slug,
   raw,
+  ancestry,
 }: {
   slug: string;
   raw: Record<string, string | string[] | undefined>;
+  ancestry: string[];
 }) {
   const filters = parseProductFilters(raw, { categorySlug: slug });
-  const [result, facets] = await Promise.all([
+  const [result, facets, offers] = await Promise.all([
     listProducts(filters),
     getAllFacets(slug),
+    getGridOffers({ kind: "category", slug, categoryPath: ancestry }),
   ]);
 
   const session = await getSession();
@@ -51,7 +55,11 @@ async function Results({
         total={result.total}
         hasQuery={Boolean(filters.q)}
       />
-      <ProductGrid products={result.items} savedIds={savedIds} />
+      <ProductGrid
+        products={result.items}
+        savedIds={savedIds}
+        offers={offers}
+      />
       <Pagination
         page={result.page}
         perPage={result.perPage}
@@ -103,7 +111,7 @@ export default async function CategoryPage({
           </div>
         }
       >
-        <Results slug={slug} raw={raw} />
+        <Results slug={slug} raw={raw} ancestry={ancestry} />
       </Suspense>
     </div>
   );

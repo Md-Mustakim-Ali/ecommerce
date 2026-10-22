@@ -11,6 +11,7 @@ import {
   listProducts,
 } from "@/lib/catalog/queries";
 import { parseProductFilters } from "@/lib/catalog/search-params";
+import { getGridOffers } from "@/lib/content/queries";
 
 export const metadata: Metadata = { title: "Search" };
 
@@ -20,9 +21,10 @@ async function Results({
   raw: Record<string, string | string[] | undefined>;
 }) {
   const filters = parseProductFilters(raw);
-  const [result, facets] = await Promise.all([
+  const [result, facets, offers] = await Promise.all([
     listProducts(filters),
     getAllFacets(),
+    getGridOffers({ kind: "search" }),
   ]);
 
   const session = await getSession();
@@ -41,6 +43,7 @@ async function Results({
       <ProductGrid
         products={result.items}
         savedIds={savedIds}
+        offers={offers}
         emptyTitle={
           filters.q ? `Nothing matches "${filters.q}"` : "No products yet"
         }

@@ -602,7 +602,8 @@ function NewPlacementForm({
             slot: String(data.get("slot") ?? "above_content") as
               | "announcement_bar"
               | "above_content"
-              | "below_content",
+              | "below_content"
+              | "in_grid",
             priority: Number(data.get("priority") ?? 0),
             publish: data.get("publish") === "on",
             data: {
@@ -686,6 +687,12 @@ function NewPlacementForm({
               </option>
               <option value="product_below_details">
                 Below the description
+              </option>
+            </optgroup>
+            <optgroup label="In a listing grid">
+              <option value="in_grid">
+                Among the products{" "}
+                {scope.scope === "store" ? "on your store page" : ""}
               </option>
             </optgroup>
           </select>

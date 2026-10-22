@@ -195,6 +195,20 @@ export function placementsInSlot(
   return placements.filter((p) => p.slot === slot);
 }
 
+/**
+ * Offers that belong inside a product grid on this route.
+ *
+ * A grid is rendered by a component that takes data, not by a slot component
+ * that fetches its own, so the page resolves these and passes them down.
+ * getPlacementsForRoute is request-cached, so a page with both a band and a
+ * grid still makes one query.
+ */
+export async function getGridOffers(
+  route: RouteContext,
+): Promise<ResolvedPlacement[]> {
+  return placementsInSlot(await getPlacementsForRoute(route), "in_grid");
+}
+
 /** Pages in a scope, for the editor. Includes drafts. */
 export async function listPagesInScope(scope: {
   scope: "platform" | "store";

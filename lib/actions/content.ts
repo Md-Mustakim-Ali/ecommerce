@@ -395,6 +395,7 @@ const placementSchema = z.object({
     "product_after_options",
     "product_sidebar",
     "product_below_details",
+    "in_grid",
   ]),
   data: z.record(z.string(), z.unknown()),
   priority: z.number().int().min(0).max(1000).default(0),

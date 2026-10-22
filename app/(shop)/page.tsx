@@ -9,12 +9,14 @@ import {
   getSavedProductIds,
   listProducts,
 } from "@/lib/catalog/queries";
+import { getGridOffers } from "@/lib/content/queries";
 
 export default async function HomePage() {
-  const [newest, tree, session] = await Promise.all([
+  const [newest, tree, session, gridOffers] = await Promise.all([
     listProducts({ sort: "newest", perPage: 8 }),
     getCategoryTree(),
     getSession(),
+    getGridOffers({ kind: "home" }),
   ]);
 
   const savedIds = await getSavedProductIds(
@@ -87,7 +89,11 @@ export default async function HomePage() {
             <ArrowRight className="size-4" aria-hidden />
           </Link>
         </div>
-        <ProductGrid products={newest.items} savedIds={savedIds} />
+        <ProductGrid
+          products={newest.items}
+          savedIds={savedIds}
+          offers={gridOffers}
+        />
       </section>
 
       <PlacementSlot route={{ kind: "home" }} slot="below_content" />
