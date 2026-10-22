@@ -93,6 +93,7 @@ export default async function EditProductPage({
           lowStockThreshold: product.lowStockThreshold,
           attributes: product.attributes,
           variants: product.variants,
+          images: product.images,
         }}
         available={available}
         permissions={{

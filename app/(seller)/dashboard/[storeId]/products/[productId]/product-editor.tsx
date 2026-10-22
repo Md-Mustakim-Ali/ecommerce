@@ -19,6 +19,7 @@ import type {
   EditorAttribute,
   EditorVariant,
 } from "@/lib/catalog/product-editor";
+import { type EditorImage, ImageManager } from "./image-manager";
 
 type AvailableAttribute = {
   id: string;
@@ -76,6 +77,7 @@ export function ProductEditor({
     lowStockThreshold: number;
     attributes: EditorAttribute[];
     variants: EditorVariant[];
+    images: EditorImage[];
   };
   available: AvailableAttribute[];
   permissions: {
@@ -88,6 +90,14 @@ export function ProductEditor({
   return (
     <div className="flex flex-col gap-6">
       <DetailsSection storeId={storeId} product={product} />
+
+      <ImageManager
+        storeId={storeId}
+        productId={product.id}
+        images={product.images}
+        attributes={product.attributes}
+        canEdit
+      />
 
       {permissions.manageVariants ? (
         <>

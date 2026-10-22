@@ -6,6 +6,7 @@ import {
   brands,
   productAttributes,
   productAttributeValues,
+  productImageAttributeValues,
   productImages,
   products,
   productTags,
@@ -82,6 +83,7 @@ export async function getProductForEditing(productId: string, storeId: string) {
     variantValueRows,
     tagRows,
     imageRows,
+    imageTagRows,
   ] = await Promise.all([
     db
       .select({
@@ -153,11 +155,34 @@ export async function getProductForEditing(productId: string, storeId: string) {
         url: productImages.url,
         alt: productImages.alt,
         position: productImages.position,
+        blurDataUrl: productImages.blurDataUrl,
       })
       .from(productImages)
       .where(eq(productImages.productId, productId))
       .orderBy(asc(productImages.position)),
+
+    db
+      .select({
+        imageId: productImageAttributeValues.imageId,
+        attributeId: productImageAttributeValues.attributeId,
+        valueId: productImageAttributeValues.valueId,
+      })
+      .from(productImageAttributeValues)
+      .innerJoin(
+        productImages,
+        eq(productImages.id, productImageAttributeValues.imageId),
+      )
+      .where(eq(productImages.productId, productId)),
   ]);
+
+  // attributeId -> valueId per image, the same shape the storefront gallery
+  // matches a shopper's selection against.
+  const tagsByImage = new Map<string, Record<string, string>>();
+  for (const row of imageTagRows) {
+    const current = tagsByImage.get(row.imageId) ?? {};
+    current[row.attributeId] = row.valueId;
+    tagsByImage.set(row.imageId, current);
+  }
 
   const valuesByAttribute = new Map<string, EditorAttribute["values"]>();
   for (const row of valueRows) {
@@ -181,7 +206,10 @@ export async function getProductForEditing(productId: string, storeId: string) {
   return {
     ...product,
     tags: tagRows,
-    images: imageRows,
+    images: imageRows.map((image) => ({
+      ...image,
+      tags: tagsByImage.get(image.id) ?? {},
+    })),
     attributes: attributeRows.map(
       (row): EditorAttribute => ({
         attributeId: row.attributeId,

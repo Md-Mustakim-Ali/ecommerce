@@ -88,3 +88,6 @@ $RECYCLE.BIN/
 #                        what makes a migration reproducible on another machine
 #                        and in CI. Never add these here.
 #   .env.example         The template. Keep it in sync when a variable is added.
+
+# Uploaded images. Local storage adapter only; production uses object storage.
+/public/uploads/

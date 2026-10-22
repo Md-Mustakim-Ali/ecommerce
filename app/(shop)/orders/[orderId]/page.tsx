@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/guards";
 import { formatMoney } from "@/lib/money/format";
 import { getOrderForBuyer } from "@/lib/orders/queries";
+import { DemoPayButton } from "./demo-pay";
 
 export const metadata: Metadata = { title: "Order" };
 
@@ -43,6 +44,14 @@ export default async function OrderPage({
             </p>
           </div>
         </div>
+      ) : null}
+
+      {/* Only while it is still pending, and only outside production. */}
+      {order.status === "pending" && process.env.NODE_ENV !== "production" ? (
+        <DemoPayButton
+          orderId={order.id}
+          totalLabel={formatMoney(order.totalCents, order.currency)}
+        />
       ) : null}
 
       <div className="flex flex-wrap items-start justify-between gap-3">
