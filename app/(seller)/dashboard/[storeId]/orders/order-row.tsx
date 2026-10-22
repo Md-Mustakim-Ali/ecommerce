@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2, MessageSquare } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 import { requestRefundAction } from "@/lib/actions/refunds";
 import type { AddressSnapshot } from "@/lib/db/schema";
 import { formatMoney } from "@/lib/money/format";
+import { OrderThread } from "./order-thread";
 
 type Item = {
   id: string;
@@ -44,6 +45,8 @@ export type SellerOrder = {
   trackingNumber: string | null;
   shippingAddress: AddressSnapshot;
   items: Item[];
+  noteCount: number;
+  unreadFromBuyer: number;
 };
 
 const STATUS_BADGE: Record<
@@ -84,6 +87,8 @@ export function OrderRow({
     ship: boolean;
     cancel: boolean;
     refund: boolean;
+    note: boolean;
+    contact: boolean;
   };
 }) {
   const [open, setOpen] = useState(false);
@@ -136,6 +141,25 @@ export function OrderRow({
             </span>
           </span>
         </button>
+
+        {/*
+          An unread buyer message is the one thing here that needs answering,
+          so it gets a colour. A count of notes is just context.
+        */}
+        {order.unreadFromBuyer > 0 ? (
+          <Badge variant="default" className="gap-1">
+            <MessageSquare aria-hidden className="size-3" />
+            {order.unreadFromBuyer}
+          </Badge>
+        ) : order.noteCount > 0 ? (
+          <span
+            className="flex items-center gap-1 text-tertiary-text text-xs"
+            title={`${order.noteCount} ${order.noteCount === 1 ? "note" : "notes"}`}
+          >
+            <MessageSquare aria-hidden className="size-3.5" />
+            {order.noteCount}
+          </span>
+        ) : null}
 
         <span className="tabular text-sm">
           {formatMoney(order.payoutCents, "USD")}
@@ -444,6 +468,20 @@ export function OrderRow({
               </Button>
             </form>
           ) : null}
+
+          {/*
+            Rendered on expand, so the thread is fetched for the one order
+            being looked at rather than for every row in the queue.
+          */}
+          <OrderThread
+            storeId={storeId}
+            subOrderId={order.id}
+            buyerEmail={order.buyerEmail}
+            permissions={{
+              note: permissions.note,
+              contact: permissions.contact,
+            }}
+          />
         </div>
       ) : null}
     </article>

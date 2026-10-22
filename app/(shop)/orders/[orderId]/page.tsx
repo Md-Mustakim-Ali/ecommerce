@@ -9,6 +9,7 @@ import { getSession } from "@/lib/auth/guards";
 import { formatMoney } from "@/lib/money/format";
 import { getOrderForBuyer } from "@/lib/orders/queries";
 import { DemoPayButton } from "./demo-pay";
+import { MessageThread } from "./message-thread";
 
 export const metadata: Metadata = { title: "Order" };
 
@@ -113,6 +114,25 @@ export default async function OrderPage({
               {sub.trackingCarrier}{" "}
               <span className="font-mono">{sub.trackingNumber}</span>
             </p>
+          ) : null}
+
+          {/*
+            Signed-in buyers only. A guest has no account to attribute a reply
+            to, and threading messages onto an email address is how you end up
+            showing one person's conversation to whoever guessed it.
+          */}
+          {session ? (
+            <MessageThread
+              subOrderId={sub.id}
+              storeName={sub.storeName}
+              messages={sub.messages.map((message) => ({
+                id: message.id,
+                authorRole: message.authorRole,
+                authorName: message.authorName,
+                body: message.body,
+                createdAt: message.createdAt.toISOString(),
+              }))}
+            />
           ) : null}
         </section>
       ))}

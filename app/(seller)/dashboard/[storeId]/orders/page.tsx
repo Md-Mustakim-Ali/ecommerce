@@ -62,6 +62,8 @@ export default async function StoreOrdersPage({
     ship: access.permissions.has("order.ship"),
     cancel: access.permissions.has("order.cancel"),
     refund: access.permissions.has("order.refund"),
+    note: access.permissions.has("order.note"),
+    contact: access.permissions.has("customer.contact"),
   };
 
   const revenue = orders
@@ -135,6 +137,8 @@ export default async function StoreOrdersPage({
                   trackingCarrier: order.trackingCarrier,
                   trackingNumber: order.trackingNumber,
                   shippingAddress: order.shippingAddress,
+                  noteCount: order.noteCount,
+                  unreadFromBuyer: order.unreadFromBuyer,
                   items: order.items.map((item) => ({
                     id: item.id,
                     productTitle: item.productTitle,
@@ -151,10 +155,7 @@ export default async function StoreOrdersPage({
         </ul>
       )}
 
-      {!permissions.accept &&
-      !permissions.ship &&
-      !permissions.cancel &&
-      !permissions.refund ? (
+      {!Object.values(permissions).some(Boolean) ? (
         <p className="text-tertiary-text text-xs">
           <Badge variant="outline">Read only</Badge> Your role can view orders
           but not act on them.

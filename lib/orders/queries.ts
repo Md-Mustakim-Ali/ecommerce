@@ -1,6 +1,12 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { orderItems, orders, stores, subOrders } from "@/lib/db/schema";
+import {
+  orderItems,
+  orderNotes,
+  orders,
+  stores,
+  subOrders,
+} from "@/lib/db/schema";
 
 /**
  * Order reads.
@@ -55,6 +61,31 @@ export async function getOrderForBuyer(input: {
     .innerJoin(subOrders, eq(subOrders.id, orderItems.subOrderId))
     .where(eq(subOrders.orderId, order.id));
 
+  // Only the buyer-visible half. Internal notes are filtered in SQL rather
+  // than in the component, so a future change to the markup cannot leak them.
+  const messages = subs.length
+    ? await db
+        .select({
+          id: orderNotes.id,
+          subOrderId: orderNotes.subOrderId,
+          authorRole: orderNotes.authorRole,
+          authorName: orderNotes.authorName,
+          body: orderNotes.body,
+          createdAt: orderNotes.createdAt,
+        })
+        .from(orderNotes)
+        .where(
+          and(
+            inArray(
+              orderNotes.subOrderId,
+              subs.map((sub) => sub.id),
+            ),
+            eq(orderNotes.visibility, "buyer"),
+          ),
+        )
+        .orderBy(asc(orderNotes.createdAt))
+    : [];
+
   return {
     ...order,
     subOrders: subs.map((sub) => ({
@@ -62,6 +93,7 @@ export async function getOrderForBuyer(input: {
       items: items
         .filter((row) => row.order_items.subOrderId === sub.id)
         .map((row) => row.order_items),
+      messages: messages.filter((row) => row.subOrderId === sub.id),
     })),
   };
 }
@@ -126,12 +158,40 @@ export async function listOrdersForStore(
     .innerJoin(subOrders, eq(subOrders.id, orderItems.subOrderId))
     .where(eq(subOrders.storeId, storeId));
 
-  return rows.map((row) => ({
-    ...row,
-    items: items
-      .filter((item) => item.order_items.subOrderId === row.id)
-      .map((item) => item.order_items),
-  }));
+  // A separate grouped query, not a correlated subquery. Drizzle renders an
+  // outer column reference inside a raw sql template unqualified, and Postgres
+  // then resolves it against the subquery's own tables — which has silently
+  // produced the wrong number here four times already.
+  const noteCounts = rows.length
+    ? await db
+        .select({
+          subOrderId: orderNotes.subOrderId,
+          total: count(),
+          unread: count(
+            sql`case when ${orderNotes.authorRole} = 'buyer' and ${orderNotes.readAt} is null then 1 end`,
+          ),
+        })
+        .from(orderNotes)
+        .where(
+          inArray(
+            orderNotes.subOrderId,
+            rows.map((row) => row.id),
+          ),
+        )
+        .groupBy(orderNotes.subOrderId)
+    : [];
+
+  return rows.map((row) => {
+    const notes = noteCounts.find((entry) => entry.subOrderId === row.id);
+    return {
+      ...row,
+      noteCount: notes?.total ?? 0,
+      unreadFromBuyer: notes?.unread ?? 0,
+      items: items
+        .filter((item) => item.order_items.subOrderId === row.id)
+        .map((item) => item.order_items),
+    };
+  });
 }
 
 /** One sub-order, scoped to its store so an id from elsewhere resolves to null. */

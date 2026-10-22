@@ -35,8 +35,8 @@ have been closed since — re-run the command before trusting the count.
 | Store profile: name, logo, banner, description, support email | `store.profile.update` | **done** |
 | Store appearance: accent colour, layout preset | `store.theme.update` | **done** — fixed palette, three layout presets |
 | Refund request | `order.refund` | **done** — files a request; only the platform moves money |
-| Internal order notes | `order.note` | missing — no column yet either |
-| Message a buyer | `customer.contact` | missing — no messaging model |
+| Internal order notes | `order.note` | **done** — `order_notes`, visibility `internal` |
+| Message a buyer | `customer.contact` | **done** — same table, visibility `buyer`, buyer can reply |
 | Delete a product | `product.delete` | missing |
 | Edit / delete a page | `page.update`, `page.delete` | missing — create and publish exist |
 | Discount code management | `discount_codes` | **done** — store and platform scopes; sellers see marketplace codes read-only |

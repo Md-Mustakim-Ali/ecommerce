@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -172,6 +172,77 @@ export const orderItems = pgTable(
   ],
 );
 
+/**
+ * Who wrote it. `staff` covers the seller's team and platform support alike —
+ * from the buyer's side they are the same voice, and the audit log already
+ * records exactly which account it was.
+ */
+export const orderNoteAuthor = pgEnum("order_note_author", ["staff", "buyer"]);
+
+/**
+ * `internal` is never sent anywhere and never rendered outside the dashboard.
+ * `buyer` appears on the buyer's own order page.
+ */
+export const orderNoteVisibility = pgEnum("order_note_visibility", [
+  "internal",
+  "buyer",
+]);
+
+/**
+ * Notes and messages on a sub-order.
+ *
+ * One table, two permissions: `order.note` writes an internal note and
+ * `customer.contact` writes one the buyer can read. They are the same act with
+ * a different audience, and splitting them into two tables would mean two
+ * queries and two components to render one conversation in date order.
+ *
+ * Attached to the sub-order rather than the order. A cart split across three
+ * sellers must not let one of them read what another wrote about the buyer,
+ * and scoping by sub-order makes that structural rather than a WHERE clause
+ * somebody has to remember.
+ *
+ * The buyer replies here too, which is all "message a buyer" needs to mean in
+ * a marketplace: a thread hanging off the thing being discussed, where both
+ * sides already have context. A general inbox would be a bigger surface with
+ * worse defaults — no order attached, and a spam problem on day one.
+ */
+export const orderNotes = pgTable(
+  "order_notes",
+  {
+    id: primaryId(),
+
+    subOrderId: uuid("sub_order_id")
+      .notNull()
+      .references(() => subOrders.id, { onDelete: "cascade" }),
+
+    authorRole: orderNoteAuthor("author_role").notNull(),
+    visibility: orderNoteVisibility("visibility").notNull(),
+
+    authorId: text("author_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Snapshotted, like everything else on an order. A note that reads "deleted
+     * user said the buyer was abusive" is worth less than nothing.
+     */
+    authorName: text("author_name").notNull(),
+
+    body: text("body").notNull(),
+
+    /** When the other side last opened the thread. Null while unread. */
+    readAt: timestamp("read_at", { withTimezone: true }),
+
+    ...timestamps,
+  },
+  (t) => [
+    index("order_notes_sub_order_idx").on(t.subOrderId, t.createdAt),
+    // The buyer's order page reads only the visible half, on every render.
+    index("order_notes_visible_idx")
+      .on(t.subOrderId, t.createdAt)
+      .where(sql`${t.visibility} = 'buyer'`),
+  ],
+);
+
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   buyer: one(user, { fields: [orders.buyerId], references: [user.id] }),
   subOrders: many(subOrders),
@@ -181,6 +252,15 @@ export const subOrdersRelations = relations(subOrders, ({ one, many }) => ({
   order: one(orders, { fields: [subOrders.orderId], references: [orders.id] }),
   store: one(stores, { fields: [subOrders.storeId], references: [stores.id] }),
   items: many(orderItems),
+  notes: many(orderNotes),
+}));
+
+export const orderNotesRelations = relations(orderNotes, ({ one }) => ({
+  subOrder: one(subOrders, {
+    fields: [orderNotes.subOrderId],
+    references: [subOrders.id],
+  }),
+  author: one(user, { fields: [orderNotes.authorId], references: [user.id] }),
 }));
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
