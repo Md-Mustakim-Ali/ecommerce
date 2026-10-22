@@ -140,7 +140,7 @@ export async function recordOrderPaid(
  * they had to give back.
  */
 export async function recordRefund(
-  db: Db,
+  db: DbOrTx,
   input: {
     subOrderId: string;
     amountCents: number;

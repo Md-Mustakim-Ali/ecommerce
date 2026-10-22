@@ -36,6 +36,26 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
     permission: "platform.finance.report",
   },
   {
+    href: "/admin/orders",
+    label: "Orders",
+    permission: "platform.order.view",
+  },
+  {
+    href: "/admin/moderation",
+    label: "Moderation",
+    permission: "platform.product.moderate",
+  },
+  {
+    href: "/admin/users",
+    label: "Users",
+    permission: "platform.user.view",
+  },
+  {
+    href: "/admin/audit",
+    label: "Audit log",
+    permission: "platform.audit.view",
+  },
+  {
     href: "/admin/refunds",
     label: "Refunds",
     permission: "platform.refund.approve",
@@ -70,7 +90,11 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
             <Link href="/admin" className="font-semibold text-sm">
               Admin
             </Link>
-            <nav className="flex items-center gap-4">
+            {/*
+              Wraps rather than overflowing. There are eleven sections now, and
+              a single non-wrapping row silently hides the last few on a laptop.
+            */}
+            <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
               {visible.map((item) => (
                 <Link
                   key={item.href}

@@ -48,17 +48,17 @@ have been closed since — re-run the command before trusting the count.
 | Capability | Permission | State |
 |---|---|---|
 | Approve / suspend stores | `platform.store.approve`, `platform.store.suspend` | **done** |
-| Review proposed attributes | `platform.attribute.review` | missing — brands and tags have a queue; attributes do not |
-| Category tree management | `platform.category.manage` | missing |
-| View any order | `platform.order.view` | missing |
+| Review proposed attributes | `platform.attribute.review` | actions **done** (merge, approve/reject); the queue UI is not built yet |
+| Category tree management | `platform.category.manage` | actions **done**; the tree UI is not built yet |
+| View any order | `platform.order.view` | **done** |
 | Approve refunds | `platform.refund.approve` | **done** |
 | Initiate payouts | `platform.payout.initiate` | **done** — amount recomputed under a row lock; failure reverses by adding an entry |
-| Moderate products | `platform.product.moderate` | missing |
-| Moderate reviews | `platform.review.moderate` | missing — `reviews.status` supports flagged/removed |
-| User lookup / suspend | `platform.user.view`, `platform.user.suspend` | missing |
+| Moderate products | `platform.product.moderate` | **done** — archives rather than deletes |
+| Moderate reviews | `platform.review.moderate` | **done** — removed reviews stop counting toward the rating |
+| User lookup / suspend | `platform.user.view`, `platform.user.suspend` | **done** — suspension revokes every session |
 | Platform-scope roles | `platform.role.manage` | missing — store-scope role editor exists and could be reused |
 | Settings: commission rate | `platform.settings.manage` | missing — commission is `DEFAULT_COMMISSION_BPS` in code |
-| Platform audit log | `platform.audit.view` | missing — store-scoped audit UI exists |
+| Platform audit log | `platform.audit.view` | **done** |
 
 ## Buyer
 
@@ -94,5 +94,8 @@ Hit three times so far:
   reported all time
 - `listProductsForStore` — same shape; worked only because an unrelated join
   forced qualification
+- `searchUsersAction` — `user.id` became `"id"`, bound to `stores.id`, and
+  compared `owner_id` (text) against a uuid; this one at least errored (500)
+  rather than returning silently wrong rows
 
 Prefer a separate grouped query or an aliased join over a correlated subquery.
