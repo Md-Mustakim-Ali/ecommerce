@@ -19,10 +19,10 @@ const SECTIONS: {
   permission: StorePermission;
 }[] = [
   {
-    href: (id) => `/dashboard/${id}/products/new`,
-    label: "Add a product",
-    description: "Create a listing, pick a brand and tags.",
-    permission: "product.create",
+    href: (id) => `/dashboard/${id}/products`,
+    label: "Products",
+    description: "Listings, options, variants and prices.",
+    permission: "product.view",
   },
   {
     href: (id) => `/dashboard/${id}/content`,

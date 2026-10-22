@@ -71,7 +71,10 @@ export function NewProductForm({
         setError(result.message);
         return;
       }
-      router.push(`/dashboard/${storeId}`);
+      // Straight into the editor. Creating a listing and being returned to a
+      // page that only shows a count reads as the save having failed, and the
+      // options and variants are set up here anyway.
+      router.push(`/dashboard/${storeId}/products/${result.productId}`);
       router.refresh();
     });
   }
