@@ -206,6 +206,11 @@ export async function listPagesInScope(scope: {
       slug: pages.slug,
       title: pages.title,
       status: pages.status,
+      // Selected so the edit form can prefill without a second round trip per
+      // page opened.
+      excerpt: pages.excerpt,
+      seoTitle: pages.seoTitle,
+      seoDescription: pages.seoDescription,
       updatedAt: pages.updatedAt,
     })
     .from(pages)

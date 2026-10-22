@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, Plus, Trash2, TriangleAlert, Wand2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
+  deleteProductAction,
   findSimilarValuesAction,
   proposeAttributeValueAction,
   saveVariantsAction,
@@ -85,6 +87,7 @@ export function ProductEditor({
     publish: boolean;
     archive: boolean;
     proposeAttribute: boolean;
+    delete: boolean;
   };
 }) {
   return (
@@ -128,6 +131,14 @@ export function ProductEditor({
         variantCount={product.variants.length}
         permissions={permissions}
       />
+
+      {permissions.delete ? (
+        <DeleteSection
+          storeId={storeId}
+          productId={product.id}
+          title={product.title}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1023,6 +1034,108 @@ function StatusSection({
           </Button>
         ) : null}
       </div>
+    </section>
+  );
+}
+
+/**
+ * Deleting the product outright.
+ *
+ * Its own section, below visibility, with the name typed back. Archive is one
+ * click away and does what almost everyone actually wants; this is for the
+ * listing created by mistake. The server refuses anyway once anything has been
+ * ordered, so the worst case is a wasted keystroke rather than lost history.
+ */
+function DeleteSection({
+  storeId,
+  productId,
+  title,
+}: {
+  storeId: string;
+  productId: string;
+  title: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <section className="flex flex-col gap-3 rounded-md border border-critical/30 bg-critical-muted/20 p-5">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-medium text-sm">Delete this product</h2>
+        <p className="text-tertiary-text text-xs">
+          Permanent, and only possible while it has never been ordered. Once it
+          has, archive it instead — buyers stop seeing it and the orders keep
+          their history.
+        </p>
+      </div>
+
+      {!open ? (
+        <div>
+          <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+            <Trash2 aria-hidden />
+            Delete
+          </Button>
+        </div>
+      ) : (
+        <form
+          className="flex flex-col gap-3 rounded-md border border-critical/40 bg-surface-1 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError(null);
+            const data = new FormData(event.currentTarget);
+            startTransition(async () => {
+              const result = await deleteProductAction({
+                storeId,
+                productId,
+                confirmation: String(data.get("confirmation") ?? ""),
+              });
+              if (!result.ok) {
+                setError(result.message);
+                return;
+              }
+              // The product no longer exists, so this page cannot render.
+              router.push(`/dashboard/${storeId}/products`);
+            });
+          }}
+        >
+          <div className="grid gap-1.5">
+            <Label htmlFor="delete-confirm">
+              Type <span className="font-medium">{title}</span> to confirm
+            </Label>
+            <Input id="delete-confirm" name="confirmation" required />
+          </div>
+
+          {error ? (
+            <p role="alert" className="text-critical text-sm">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="submit"
+              size="sm"
+              variant="destructive"
+              disabled={pending}
+            >
+              {pending ? (
+                <Loader2 className="animate-spin" aria-hidden />
+              ) : null}
+              Delete permanently
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
     </section>
   );
 }

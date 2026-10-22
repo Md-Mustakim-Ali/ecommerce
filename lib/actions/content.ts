@@ -124,6 +124,126 @@ export async function createPageAction(
   }
 }
 
+const updatePageSchema = pageInput.extend({ pageId: z.uuid() });
+
+/**
+ * Edits a page's own fields.
+ *
+ * The slug is editable, which means it is also breakable: anything already
+ * linking to the old address stops working. So it only changes when the seller
+ * types a new one, never as a side effect of renaming the title. A page called
+ * "Shipping" that quietly moves to /returns because somebody fixed a typo in
+ * the heading is a worse outcome than a slug that no longer matches.
+ */
+export async function updatePageAction(
+  input: Scope & z.input<typeof updatePageSchema>,
+): Promise<ContentResult> {
+  const scope = scopeSchema.safeParse(input);
+  if (!scope.success) return { ok: false, message: "Invalid scope." };
+
+  const parsed = updatePageSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0].message };
+  }
+
+  if (scope.data.scope === "store") {
+    await requireStorePermission(scope.data.storeId, "page.update");
+  } else {
+    await requirePlatformPermission("platform.page.manage");
+  }
+  const session = await getSession();
+  if (!session) return { ok: false, message: "Not signed in." };
+
+  const page = await pageInScope(parsed.data.pageId, scope.data);
+  if (!page) return { ok: false, message: "Page not found." };
+
+  const slug = parsed.data.slug ? slugify(parsed.data.slug) : page.slug;
+  if (!slug)
+    return { ok: false, message: "That slug needs a letter or number." };
+
+  try {
+    await db
+      .update(pages)
+      .set({
+        title: parsed.data.title,
+        slug,
+        excerpt: parsed.data.excerpt || null,
+        seoTitle: parsed.data.seoTitle || null,
+        seoDescription: parsed.data.seoDescription || null,
+        updatedBy: session.user.id,
+      })
+      .where(eq(pages.id, parsed.data.pageId));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return {
+        ok: false,
+        message: `A page with the slug "${slug}" already exists.`,
+      };
+    }
+    throw error;
+  }
+
+  // Both, because the old address needs to stop resolving as well.
+  revalidatePath(`/pages/${page.slug}`);
+  revalidatePath(`/pages/${slug}`);
+  revalidatePath("/admin/content");
+  return { ok: true, id: parsed.data.pageId, message: "Saved." };
+}
+
+/**
+ * Deletes a page and its blocks.
+ *
+ * Refuses while it is published. Taking a live page down is a separate,
+ * reversible decision, and making it a required first step means nobody
+ * removes something buyers are currently reading in one click.
+ */
+export async function deletePageAction(
+  input: Scope & { pageId: string },
+): Promise<ContentResult> {
+  const scope = scopeSchema.safeParse(input);
+  if (!scope.success) return { ok: false, message: "Invalid scope." };
+  const pageId = z.uuid().safeParse(input.pageId);
+  if (!pageId.success) return { ok: false, message: "Invalid request." };
+
+  if (scope.data.scope === "store") {
+    await requireStorePermission(scope.data.storeId, "page.delete");
+  } else {
+    await requirePlatformPermission("platform.page.manage");
+  }
+  const session = await getSession();
+  if (!session) return { ok: false, message: "Not signed in." };
+
+  const page = await pageInScope(pageId.data, scope.data);
+  if (!page) return { ok: false, message: "Page not found." };
+
+  if (page.status === "published") {
+    return {
+      ok: false,
+      message: "Unpublish it first. Buyers may be reading it right now.",
+    };
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.insert(auditLog).values({
+      storeId: scope.data.scope === "store" ? scope.data.storeId : null,
+      actorId: session.user.id,
+      actorEmail: session.user.email,
+      action: "page.delete",
+      targetType: "page",
+      targetId: pageId.data,
+      targetLabel: page.title,
+      before: { slug: page.slug, status: page.status },
+    });
+
+    // Blocks cascade from the page.
+    await tx.delete(pages).where(eq(pages.id, pageId.data));
+  });
+
+  revalidatePath(`/pages/${page.slug}`);
+  revalidatePath("/admin/content");
+  return { ok: true, id: pageId.data, message: `Deleted "${page.title}".` };
+}
+
 const publishSchema = z.object({ pageId: z.uuid(), publish: z.boolean() });
 
 export async function setPagePublishedAction(

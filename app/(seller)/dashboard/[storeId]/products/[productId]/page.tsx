@@ -101,6 +101,7 @@ export default async function EditProductPage({
           publish: access.permissions.has("product.publish"),
           archive: access.permissions.has("product.archive"),
           proposeAttribute: access.permissions.has("attribute.propose"),
+          delete: access.permissions.has("product.delete"),
         }}
       />
     </div>

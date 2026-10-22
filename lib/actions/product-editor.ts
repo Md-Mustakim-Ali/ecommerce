@@ -10,12 +10,16 @@ import { db } from "@/lib/db";
 import {
   attributes,
   attributeValues,
+  auditLog,
+  orderItems,
   productAttributes,
   productAttributeValues,
+  productImages,
   products,
   productVariants,
   variantAttributeValues,
 } from "@/lib/db/schema";
+import { storageProvider } from "@/lib/storage";
 
 /**
  * Authoring products: attributes, values, and the variant matrix.
@@ -602,6 +606,111 @@ export async function findSimilarValuesAction(input: {
     .limit(5);
 
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Deletion
+// ---------------------------------------------------------------------------
+
+/**
+ * Deletes a product outright.
+ *
+ * Refuses the moment anything has ever been ordered. `order_items.variant_id`
+ * is ON DELETE SET NULL, so the database would allow this happily and quietly
+ * sever every past order's link back to what was actually bought — the display
+ * would survive on the snapshot columns, but a support question five months
+ * later would have nothing to look up. Archiving exists for that case and does
+ * the same job to the buyer's eye.
+ *
+ * Everything else cascades: images, variants, attributes, tags, reviews and
+ * saved items all reference the product with ON DELETE CASCADE. The image
+ * files do not, so they are removed by hand.
+ */
+export async function deleteProductAction(input: {
+  storeId: string;
+  productId: string;
+  /** The product title, typed back. */
+  confirmation: string;
+}): Promise<EditorResult> {
+  const storeId = z.uuid().safeParse(input.storeId);
+  const productId = z.uuid().safeParse(input.productId);
+  if (!storeId.success || !productId.success) {
+    return { ok: false, message: "Invalid request." };
+  }
+
+  await requireStorePermission(storeId.data, "product.delete");
+  const session = await getSession();
+  if (!session) return { ok: false, message: "Not signed in." };
+
+  const [product] = await db
+    .select({
+      id: products.id,
+      slug: products.slug,
+      title: products.title,
+      status: products.status,
+    })
+    .from(products)
+    .where(
+      and(eq(products.id, productId.data), eq(products.storeId, storeId.data)),
+    )
+    .limit(1);
+  if (!product) return { ok: false, message: "Product not found." };
+
+  if (input.confirmation?.trim() !== product.title) {
+    return {
+      ok: false,
+      message: `Type the product name exactly — "${product.title}" — to confirm.`,
+    };
+  }
+
+  const [{ ordered }] = await db
+    .select({ ordered: sql<number>`count(*)::int` })
+    .from(orderItems)
+    .innerJoin(productVariants, eq(productVariants.id, orderItems.variantId))
+    .where(eq(productVariants.productId, productId.data));
+
+  if (ordered > 0) {
+    return {
+      ok: false,
+      message: `This has been ordered ${ordered} ${ordered === 1 ? "time" : "times"}. Archive it instead — buyers stop seeing it and the orders keep their history.`,
+    };
+  }
+
+  const images = await db
+    .select({ url: productImages.url })
+    .from(productImages)
+    .where(eq(productImages.productId, productId.data));
+
+  await db.transaction(async (tx) => {
+    // Written before the delete, because auditLog.targetId is only a uuid and
+    // the label is the only thing that will still mean anything afterwards.
+    await tx.insert(auditLog).values({
+      storeId: storeId.data,
+      actorId: session.user.id,
+      actorEmail: session.user.email,
+      action: "product.delete",
+      targetType: "product",
+      targetId: productId.data,
+      targetLabel: product.title,
+      before: { slug: product.slug, status: product.status },
+    });
+
+    await tx.delete(products).where(eq(products.id, productId.data));
+  });
+
+  // After the rows, and never inside the transaction: a rolled-back delete
+  // with the files already gone leaves a product whose images are all broken.
+  for (const image of images) {
+    try {
+      await storageProvider().remove(image.url.replace(/^\/uploads\//, ""));
+    } catch {
+      // Seeded images point at a remote host with no local file.
+    }
+  }
+
+  revalidatePath(`/dashboard/${storeId.data}/products`);
+  revalidatePath(`/p/${product.slug}`);
+  return { ok: true, message: `Deleted "${product.title}".` };
 }
 
 async function ownedProduct(productId: string, storeId: string) {

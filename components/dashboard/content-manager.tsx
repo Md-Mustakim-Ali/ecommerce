@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -12,9 +12,11 @@ import { Separator } from "@/components/ui/separator";
 import {
   createPageAction,
   createPlacementAction,
+  deletePageAction,
   deletePlacementAction,
   setPagePublishedAction,
   setPlacementStatusAction,
+  updatePageAction,
 } from "@/lib/actions/content";
 import { PLACEMENT_BLOCK_TYPES } from "@/lib/content/blocks";
 
@@ -34,6 +36,9 @@ export type PageRow = {
   slug: string;
   title: string;
   status: string;
+  excerpt: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
 };
 
 export type PlacementRow = {
@@ -80,6 +85,7 @@ export function ContentManager({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
 
   function run(work: () => Promise<{ ok: boolean; message: string }>) {
     startTransition(async () => {
@@ -106,52 +112,73 @@ export function ContentManager({
         ) : (
           <ul className="flex flex-col gap-px overflow-hidden rounded-md bg-border">
             {pages.map((page) => (
-              <li
-                key={page.id}
-                className="flex flex-wrap items-center justify-between gap-3 bg-surface-1 px-4 py-3"
-              >
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-medium text-sm">{page.title}</span>
-                  <span className="font-mono text-tertiary-text text-xs">
-                    {publicPathPrefix}/{page.slug}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant={
-                      page.status === "published" ? "positive" : "neutral"
-                    }
-                  >
-                    {page.status}
-                  </Badge>
-                  {page.status === "published" ? (
+              <li key={page.id} className="flex flex-col bg-surface-1">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium text-sm">{page.title}</span>
+                    <span className="font-mono text-tertiary-text text-xs">
+                      {publicPathPrefix}/{page.slug}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        page.status === "published" ? "positive" : "neutral"
+                      }
+                    >
+                      {page.status}
+                    </Badge>
+                    {page.status === "published" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        render={
+                          <Link href={`${publicPathPrefix}/${page.slug}`} />
+                        }
+                      >
+                        View
+                      </Button>
+                    ) : null}
                     <Button
                       size="sm"
                       variant="ghost"
-                      render={
-                        <Link href={`${publicPathPrefix}/${page.slug}`} />
+                      disabled={pending}
+                      onClick={() =>
+                        setEditing(editing === page.id ? null : page.id)
                       }
                     >
-                      View
+                      <Pencil aria-hidden />
+                      Edit
                     </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={pending}
-                    onClick={() =>
-                      run(() =>
-                        setPagePublishedAction({
-                          ...scope,
-                          pageId: page.id,
-                          publish: page.status !== "published",
-                        }),
-                      )
-                    }
-                  >
-                    {page.status === "published" ? "Unpublish" : "Publish"}
-                  </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() =>
+                        run(() =>
+                          setPagePublishedAction({
+                            ...scope,
+                            pageId: page.id,
+                            publish: page.status !== "published",
+                          }),
+                        )
+                      }
+                    >
+                      {page.status === "published" ? "Unpublish" : "Publish"}
+                    </Button>
+                  </div>
                 </div>
+
+                {editing === page.id ? (
+                  <EditPageForm
+                    scope={scope}
+                    page={page}
+                    onDone={() => {
+                      setEditing(null);
+                      router.refresh();
+                    }}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
@@ -264,6 +291,189 @@ export function ContentManager({
       {message ? (
         <output className="text-secondary-text text-sm">{message}</output>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Editing an existing page, inline under its row.
+ *
+ * Delete sits inside this form rather than in the row, because it should cost
+ * a click to reach. Rows are scanned; a destructive button in a list of them
+ * is a button somebody hits while looking for Publish.
+ */
+function EditPageForm({
+  scope,
+  page,
+  onDone,
+}: {
+  scope: Scope;
+  page: PageRow;
+  onDone: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <div className="flex flex-col gap-3 border-border border-t bg-surface-2 px-4 py-4">
+      <form
+        id={`edit-page-${page.id}`}
+        className="flex flex-col gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setError(null);
+          const data = new FormData(event.currentTarget);
+          startTransition(async () => {
+            const result = await updatePageAction({
+              ...scope,
+              pageId: page.id,
+              title: String(data.get("title") ?? ""),
+              slug: String(data.get("slug") ?? ""),
+              excerpt: String(data.get("excerpt") ?? ""),
+              seoTitle: String(data.get("seoTitle") ?? ""),
+              seoDescription: String(data.get("seoDescription") ?? ""),
+            });
+            if (!result.ok) {
+              setError(result.message);
+              return;
+            }
+            onDone();
+          });
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor={`title-${page.id}`}>Title</Label>
+            <Input
+              id={`title-${page.id}`}
+              name="title"
+              defaultValue={page.title}
+              required
+              maxLength={200}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`slug-${page.id}`}>Slug</Label>
+            <Input
+              id={`slug-${page.id}`}
+              name="slug"
+              defaultValue={page.slug}
+              maxLength={200}
+            />
+            {/*
+              Worth saying plainly. Changing this breaks anything already
+              linking here, and nothing in the interface would otherwise
+              suggest that.
+            */}
+            <p className="text-tertiary-text text-xs">
+              Changing this breaks existing links to the page.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor={`excerpt-${page.id}`}>Summary</Label>
+          <Input
+            id={`excerpt-${page.id}`}
+            name="excerpt"
+            defaultValue={page.excerpt ?? ""}
+            maxLength={400}
+          />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor={`seo-title-${page.id}`}>SEO title</Label>
+            <Input
+              id={`seo-title-${page.id}`}
+              name="seoTitle"
+              defaultValue={page.seoTitle ?? ""}
+              placeholder={page.title}
+              maxLength={200}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor={`seo-desc-${page.id}`}>SEO description</Label>
+            <Input
+              id={`seo-desc-${page.id}`}
+              name="seoDescription"
+              defaultValue={page.seoDescription ?? ""}
+              maxLength={400}
+            />
+          </div>
+        </div>
+
+        {error ? (
+          <p role="alert" className="text-critical text-sm">
+            {error}
+          </p>
+        ) : null}
+      </form>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="submit"
+          form={`edit-page-${page.id}`}
+          size="sm"
+          disabled={pending}
+        >
+          {pending ? "Saving…" : "Save"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+
+        {!confirming ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-critical"
+            onClick={() => setConfirming(true)}
+          >
+            <Trash2 aria-hidden />
+            Delete
+          </Button>
+        ) : (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-secondary-text text-xs">
+              Delete this page and its blocks?
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={pending}
+              onClick={() => {
+                setError(null);
+                startTransition(async () => {
+                  const result = await deletePageAction({
+                    ...scope,
+                    pageId: page.id,
+                  });
+                  if (!result.ok) {
+                    setError(result.message);
+                    setConfirming(false);
+                    return;
+                  }
+                  onDone();
+                });
+              }}
+            >
+              Delete
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setConfirming(false)}
+            >
+              Keep
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
