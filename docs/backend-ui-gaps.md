@@ -19,8 +19,9 @@ for p in $(grep -o '"[a-z_]*\.[a-z_.]*"' lib/auth/permissions.ts | tr -d '"' | s
 done
 ```
 
-Last run: 2026-09-03. 26 of 62 permissions unused at that point; several
-have been closed since — re-run the command before trusting the count.
+Last run: 2026-09-04. Zero unused. Note the script cannot see an
+OWNER_ONLY_ACTION unless something writes it as an audit-log `action`, so
+treat a hit on one of those four as "not audited" rather than "not built".
 
 ---
 
@@ -85,7 +86,7 @@ Drizzle renders an outer column reference inside a raw `sql` template
 subquery's own tables, and if one of them happens to have a column of that name
 the query silently returns wrong rows rather than erroring.
 
-Hit three times so far:
+Hit four times so far:
 
 - `listRolesForStore` — `roles.id` became `"id"`, matched `store_members.id`,
   every role reported 0 members

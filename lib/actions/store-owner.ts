@@ -146,14 +146,51 @@ export async function updateBillingAction(
     return { ok: false, message: "Only the store owner can change this." };
   }
 
-  await db
-    .update(stores)
-    .set({
-      billingName: data.billingName || null,
-      billingTaxId: data.billingTaxId || null,
-      billingAddress: data.billingAddress || null,
+  const [before] = await db
+    .select({
+      name: stores.billingName,
+      taxId: stores.billingTaxId,
+      address: stores.billingAddress,
+      storeName: stores.name,
     })
-    .where(eq(stores.id, data.storeId));
+    .from(stores)
+    .where(eq(stores.id, data.storeId))
+    .limit(1);
+  if (!before) return { ok: false, message: "Store not found." };
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(stores)
+      .set({
+        billingName: data.billingName || null,
+        billingTaxId: data.billingTaxId || null,
+        billingAddress: data.billingAddress || null,
+      })
+      .where(eq(stores.id, data.storeId));
+
+    // Audited like the other three owner-only actions. This is the legal
+    // entity that appears on invoices, so a change to it is a change to who
+    // the marketplace believes it is trading with.
+    await tx.insert(auditLog).values({
+      storeId: data.storeId,
+      actorId: owner.userId,
+      actorEmail: owner.email,
+      action: "store.billing.update",
+      targetType: "store",
+      targetId: data.storeId,
+      targetLabel: before.storeName,
+      before: {
+        name: before.name,
+        taxId: before.taxId,
+        address: before.address,
+      },
+      after: {
+        name: data.billingName ?? null,
+        taxId: data.billingTaxId ?? null,
+        address: data.billingAddress ?? null,
+      },
+    });
+  });
 
   revalidatePath(`/dashboard/${data.storeId}/settings`);
   return { ok: true, message: "Billing details updated." };
