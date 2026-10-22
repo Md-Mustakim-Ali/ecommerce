@@ -13,6 +13,14 @@ export type ProductSort = "relevance" | "newest" | "price-asc" | "price-desc";
 
 export type ProductFilters = {
   q?: string;
+  /**
+   * Restricts to specific products.
+   *
+   * Used by the saved-items page, which starts from a list of ids and needs
+   * them run through the same visibility rules as everything else — so a saved
+   * product whose store was suspended disappears here too.
+   */
+  productIds?: string[];
   categorySlug?: string;
   brandSlugs?: string[];
   tagSlugs?: string[];

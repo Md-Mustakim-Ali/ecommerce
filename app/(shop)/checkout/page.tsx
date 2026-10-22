@@ -1,9 +1,12 @@
+import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PlacementSlot } from "@/components/content/placement-slot";
 import { Button } from "@/components/ui/button";
 import { getSession } from "@/lib/auth/guards";
 import { getCart } from "@/lib/cart";
+import { db } from "@/lib/db";
+import { addresses } from "@/lib/db/schema";
 import { shippingFor } from "@/lib/orders/shipping";
 import { CheckoutForm } from "./checkout-form";
 
@@ -11,6 +14,21 @@ export const metadata: Metadata = { title: "Checkout" };
 
 export default async function CheckoutPage() {
   const [cart, session] = await Promise.all([getCart(), getSession()]);
+
+  // The saved default, if there is one. A signed-in buyer retyping the same
+  // address on every order is the most avoidable friction in checkout.
+  const [defaultAddress] = session
+    ? await db
+        .select()
+        .from(addresses)
+        .where(
+          and(
+            eq(addresses.userId, session.user.id),
+            eq(addresses.isDefaultShipping, true),
+          ),
+        )
+        .limit(1)
+    : [];
 
   if (cart.lines.length === 0) {
     return (
@@ -40,6 +58,20 @@ export default async function CheckoutPage() {
         cart={cart}
         shippingCents={shippingCents}
         defaultEmail={session?.user.email ?? ""}
+        defaultAddress={
+          defaultAddress
+            ? {
+                recipientName: defaultAddress.recipientName,
+                phone: defaultAddress.phone,
+                line1: defaultAddress.line1,
+                line2: defaultAddress.line2,
+                city: defaultAddress.city,
+                region: defaultAddress.region,
+                postalCode: defaultAddress.postalCode,
+                countryCode: defaultAddress.countryCode,
+              }
+            : null
+        }
       />
     </div>
   );

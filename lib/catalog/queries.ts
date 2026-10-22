@@ -139,6 +139,15 @@ export async function listProducts(filters: ProductFilters = {}) {
     eq(stores.status, "active"),
   ];
 
+  if (filters.productIds) {
+    // An empty list means "nothing", not "everything" — the difference between
+    // an empty saved list and the whole catalogue.
+    if (filters.productIds.length === 0) {
+      return { items: [], total: 0, page, perPage };
+    }
+    conditions.push(inArray(products.id, filters.productIds));
+  }
+
   if (filters.categorySlug) {
     const ids = await categoryAndDescendants(filters.categorySlug);
     if (ids.length === 0) return { items: [], total: 0, page, perPage };

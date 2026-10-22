@@ -26,10 +26,22 @@ export function CheckoutForm({
   cart,
   shippingCents,
   defaultEmail,
+  defaultAddress,
 }: {
   cart: CartSummary;
   shippingCents: number;
   defaultEmail: string;
+  /** The buyer's saved default, pre-filled. Null for guests. */
+  defaultAddress: {
+    recipientName: string;
+    phone: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    region: string | null;
+    postalCode: string;
+    countryCode: string;
+  } | null;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +158,7 @@ export function CheckoutForm({
             <Input
               id="recipientName"
               name="recipientName"
+              defaultValue={defaultAddress?.recipientName ?? ""}
               autoComplete="name"
               required
             />
@@ -156,6 +169,7 @@ export function CheckoutForm({
             <Input
               id="line1"
               name="line1"
+              defaultValue={defaultAddress?.line1 ?? ""}
               autoComplete="address-line1"
               required
             />
@@ -163,7 +177,12 @@ export function CheckoutForm({
 
           <div className="grid gap-2">
             <Label htmlFor="line2">Apartment, suite (optional)</Label>
-            <Input id="line2" name="line2" autoComplete="address-line2" />
+            <Input
+              id="line2"
+              name="line2"
+              defaultValue={defaultAddress?.line2 ?? ""}
+              autoComplete="address-line2"
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -172,19 +191,26 @@ export function CheckoutForm({
               <Input
                 id="city"
                 name="city"
+                defaultValue={defaultAddress?.city ?? ""}
                 autoComplete="address-level2"
                 required
               />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="region">Region</Label>
-              <Input id="region" name="region" autoComplete="address-level1" />
+              <Input
+                id="region"
+                name="region"
+                defaultValue={defaultAddress?.region ?? ""}
+                autoComplete="address-level1"
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="postalCode">Postcode</Label>
               <Input
                 id="postalCode"
                 name="postalCode"
+                defaultValue={defaultAddress?.postalCode ?? ""}
                 autoComplete="postal-code"
                 required
               />
@@ -196,6 +222,7 @@ export function CheckoutForm({
             <Input
               id="countryCode"
               name="countryCode"
+              defaultValue={defaultAddress?.countryCode ?? ""}
               autoComplete="country"
               placeholder="US"
               maxLength={2}
@@ -205,7 +232,13 @@ export function CheckoutForm({
 
           <div className="grid gap-2">
             <Label htmlFor="phone">Phone (optional)</Label>
-            <Input id="phone" name="phone" type="tel" autoComplete="tel" />
+            <Input
+              id="phone"
+              name="phone"
+              defaultValue={defaultAddress?.phone ?? ""}
+              type="tel"
+              autoComplete="tel"
+            />
           </div>
         </section>
       </div>

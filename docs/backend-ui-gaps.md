@@ -39,7 +39,7 @@ have been closed since — re-run the command before trusting the count.
 | Message a buyer | `customer.contact` | missing — no messaging model |
 | Delete a product | `product.delete` | missing |
 | Edit / delete a page | `page.update`, `page.delete` | missing — create and publish exist |
-| Discount code management | `discount_codes` | missing — codes work end to end, but only SQL can create them |
+| Discount code management | `discount_codes` | **done** — store and platform scopes; sellers see marketplace codes read-only |
 | Where a store's offer sits in the product **list** (cards/grid) | `placements` | missing — product *pages* are done |
 | Owner-only: transfer ownership, delete store, billing, payout destination | 4 hardcoded owner actions | missing |
 
@@ -64,8 +64,8 @@ have been closed since — re-run the command before trusting the count.
 
 | Capability | Table | State |
 |---|---|---|
-| Saved items / wishlist page | `saved_items` | missing — the save button writes rows nobody can list |
-| Saved addresses | `addresses` | missing — checkout retypes the address every order |
+| Saved items / wishlist page | `saved_items` | **done** |
+| Saved addresses | `addresses` | **done** — the default pre-fills checkout |
 
 ## Infrastructure
 

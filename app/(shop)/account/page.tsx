@@ -1,4 +1,4 @@
-import { LayoutDashboard, Package, Shield } from "lucide-react";
+import { Heart, LayoutDashboard, MapPin, Package, Shield } from "lucide-react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Separator } from "@/components/ui/separator";
@@ -54,6 +54,22 @@ export default async function AccountPage() {
           >
             <Package aria-hidden className="size-4 text-secondary-text" />
             Your orders
+          </Link>
+
+          <Link
+            href="/account/saved"
+            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm hover:bg-surface-2"
+          >
+            <Heart aria-hidden className="size-4 text-secondary-text" />
+            Saved items
+          </Link>
+
+          <Link
+            href="/account/addresses"
+            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm hover:bg-surface-2"
+          >
+            <MapPin aria-hidden className="size-4 text-secondary-text" />
+            Addresses
           </Link>
 
           {stores.length > 0 ? (
