@@ -71,6 +71,11 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
     permission: "platform.settings.manage",
   },
   {
+    href: "/admin/roles",
+    label: "Roles",
+    permission: "platform.role.manage",
+  },
+  {
     href: "/admin/settings",
     label: "Settings",
     permission: "platform.settings.manage",

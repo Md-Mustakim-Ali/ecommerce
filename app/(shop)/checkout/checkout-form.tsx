@@ -69,27 +69,6 @@ export function CheckoutForm({
   const total =
     cart.subtotalCents + shippingAfter - (discount?.amountCents ?? 0);
 
-  function checkCode(form: HTMLFormElement) {
-    setDiscountError(null);
-    const raw = new FormData(form).get("discountCode");
-    const emailField = form
-      .closest("form")
-      ?.querySelector<HTMLInputElement>("#email");
-
-    startChecking(async () => {
-      const result = await checkDiscountAction({
-        code: String(raw ?? ""),
-        email: emailField?.value ?? undefined,
-      });
-      if (!result.ok) {
-        setDiscount(null);
-        setDiscountError(result.message);
-        return;
-      }
-      setDiscount(result);
-    });
-  }
-
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);

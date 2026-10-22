@@ -4,10 +4,14 @@ import {
   effectiveStorePermissions,
   permissionDiff,
   validateGrant,
+  validatePlatformAssignment,
+  validatePlatformGrant,
   validateRoleAssignment,
 } from "./access-rules";
 import {
   MAX_CUSTOM_ROLES_PER_STORE,
+  PLATFORM_PERMISSION_KEYS,
+  type PlatformPermission,
   STORE_PERMISSION_KEYS,
   type StorePermission,
 } from "./permissions";
@@ -278,5 +282,102 @@ describe("can", () => {
     const access = { permissions: set("order.view") };
     expect(can(access, "order.view")).toBe(true);
     expect(can(access, "order.ship")).toBe(false);
+  });
+});
+
+describe("the platform ceiling", () => {
+  const all = new Set(PLATFORM_PERMISSION_KEYS);
+  const limited = new Set<PlatformPermission>([
+    "platform.store.view",
+    "platform.brand.review",
+  ]);
+
+  it("lets somebody grant what they hold", () => {
+    const result = validatePlatformGrant({
+      actorPermissions: limited,
+      requested: ["platform.store.view"],
+      targetIsSystemRole: false,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.permissions).toEqual(["platform.store.view"]);
+  });
+
+  it("refuses anything above the ceiling", () => {
+    const result = validatePlatformGrant({
+      actorPermissions: limited,
+      requested: ["platform.store.view", "platform.payout.initiate"],
+      targetIsSystemRole: false,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.reason === "exceeds-ceiling") {
+      expect(result.keys).toEqual(["platform.payout.initiate"]);
+    } else {
+      throw new Error("expected exceeds-ceiling");
+    }
+  });
+
+  it("refuses a key outside the vocabulary", () => {
+    const result = validatePlatformGrant({
+      actorPermissions: all,
+      // A store key is not a platform key, however real it looks.
+      requested: ["order.ship", "platform.store.view"],
+      targetIsSystemRole: false,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.reason === "unknown-permission") {
+      expect(result.keys).toEqual(["order.ship"]);
+    } else {
+      throw new Error("expected unknown-permission");
+    }
+  });
+
+  it("refuses to edit a system role", () => {
+    const result = validatePlatformGrant({
+      actorPermissions: all,
+      requested: [],
+      targetIsSystemRole: true,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("system-role-immutable");
+  });
+
+  it("stops self-escalation through assignment", () => {
+    // The classic hole: platform.role.manage alone would otherwise let
+    // somebody put themselves in the Super Admin role.
+    const result = validatePlatformAssignment({
+      actorPermissions: limited,
+      rolePermissions: [...PLATFORM_PERMISSION_KEYS],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.keys.length).toBeGreaterThan(0);
+  });
+
+  it("allows an assignment fully inside the ceiling", () => {
+    expect(
+      validatePlatformAssignment({
+        actorPermissions: all,
+        rolePermissions: ["platform.store.view", "platform.payout.initiate"],
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("ignores store keys when checking an assignment", () => {
+    // A malformed role carrying a store key must not be treated as granting
+    // platform power, in either direction.
+    expect(
+      validatePlatformAssignment({
+        actorPermissions: limited,
+        rolePermissions: ["order.ship", "platform.store.view"],
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("deduplicates a repeated request", () => {
+    const result = validatePlatformGrant({
+      actorPermissions: all,
+      requested: ["platform.store.view", "platform.store.view"],
+      targetIsSystemRole: false,
+    });
+    if (result.ok) expect(result.permissions).toHaveLength(1);
   });
 });

@@ -1,7 +1,9 @@
 import {
+  isPlatformPermission,
   isStorePermission,
   MAX_CUSTOM_ROLES_PER_STORE,
   type Permission,
+  type PlatformPermission,
   STORE_PERMISSION_KEYS,
   type StorePermission,
 } from "./permissions";
@@ -183,4 +185,71 @@ export function permissionDiff(
     added: after.filter((key) => !beforeSet.has(key)).sort(),
     removed: before.filter((key) => !afterSet.has(key)).sort(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Platform scope
+// ---------------------------------------------------------------------------
+
+/**
+ * The same ceiling, one level up.
+ *
+ * Platform roles have no owner to fall back on — there is no equivalent of
+ * `stores.owner_id` that implicitly holds everything — so the only thing
+ * stopping a staff member from granting themselves more than they have is this
+ * check. Getting it wrong is a full platform takeover rather than one store.
+ *
+ * Deliberately a separate function from validateGrant rather than a generic
+ * one. The two vocabularies are different types, and a generic version would
+ * have to widen to `string` to accept both, which is exactly the check being
+ * performed.
+ */
+export function validatePlatformGrant(input: {
+  actorPermissions: ReadonlySet<PlatformPermission>;
+  requested: readonly string[];
+  targetIsSystemRole: boolean;
+}):
+  | { ok: true; permissions: PlatformPermission[] }
+  | { ok: false; reason: "unknown-permission"; keys: string[] }
+  | { ok: false; reason: "exceeds-ceiling"; keys: PlatformPermission[] }
+  | { ok: false; reason: "system-role-immutable" } {
+  if (input.targetIsSystemRole) {
+    return { ok: false, reason: "system-role-immutable" };
+  }
+
+  const unknown = input.requested.filter((key) => !isPlatformPermission(key));
+  if (unknown.length > 0) {
+    return { ok: false, reason: "unknown-permission", keys: unknown };
+  }
+
+  const requested = [...new Set(input.requested as PlatformPermission[])];
+  const exceeded = requested.filter((key) => !input.actorPermissions.has(key));
+  if (exceeded.length > 0) {
+    return { ok: false, reason: "exceeds-ceiling", keys: exceeded };
+  }
+
+  return { ok: true, permissions: requested };
+}
+
+/**
+ * Assigning a platform role is bounded by the same ceiling.
+ *
+ * Without this, `platform.role.manage` alone would be an escalation path:
+ * assign yourself to the Super Admin role and you hold everything.
+ */
+export function validatePlatformAssignment(input: {
+  actorPermissions: ReadonlySet<PlatformPermission>;
+  rolePermissions: readonly Permission[];
+}):
+  | { ok: true }
+  | { ok: false; reason: "exceeds-ceiling"; keys: PlatformPermission[] } {
+  const exceeded = input.rolePermissions.filter(
+    (key): key is PlatformPermission =>
+      isPlatformPermission(key) && !input.actorPermissions.has(key),
+  );
+
+  if (exceeded.length > 0) {
+    return { ok: false, reason: "exceeds-ceiling", keys: exceeded };
+  }
+  return { ok: true };
 }

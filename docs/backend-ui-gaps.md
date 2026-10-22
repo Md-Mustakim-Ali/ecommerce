@@ -56,7 +56,7 @@ have been closed since — re-run the command before trusting the count.
 | Moderate products | `platform.product.moderate` | **done** — archives rather than deletes |
 | Moderate reviews | `platform.review.moderate` | **done** — removed reviews stop counting toward the rating |
 | User lookup / suspend | `platform.user.view`, `platform.user.suspend` | **done** — suspension revokes every session |
-| Platform-scope roles | `platform.role.manage` | missing — store-scope role editor exists and could be reused |
+| Platform-scope roles | `platform.role.manage` | **done** — with a guard on the last route back in |
 | Settings: commission rate | `platform.settings.manage` | **done** — new orders only; past ones keep their snapshotted rate |
 | Platform audit log | `platform.audit.view` | **done** |
 
