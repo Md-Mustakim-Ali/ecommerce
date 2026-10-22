@@ -41,7 +41,7 @@ have been closed since — re-run the command before trusting the count.
 | Edit / delete a page | `page.update`, `page.delete` | missing — create and publish exist |
 | Discount code management | `discount_codes` | **done** — store and platform scopes; sellers see marketplace codes read-only |
 | Where a store's offer sits in the product **list** (cards/grid) | `placements` | missing — product *pages* are done |
-| Owner-only: transfer ownership, delete store, billing, payout destination | 4 hardcoded owner actions | missing |
+| Owner-only: transfer ownership, close store, billing, payout destination | 4 hardcoded owner actions | **done** — identity-checked, never permission-checked |
 
 ## Platform / admin
 

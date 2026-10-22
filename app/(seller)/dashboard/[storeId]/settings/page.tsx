@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { getStoreAccess } from "@/lib/auth/access";
 import { db } from "@/lib/db";
 import { stores } from "@/lib/db/schema";
+import { OwnerZone } from "./owner-zone";
 import { StoreSettings } from "./store-settings";
 
 export const metadata: Metadata = { title: "Store settings" };
@@ -43,6 +44,11 @@ export default async function StoreSettingsPage({
       supportEmail: true,
       supportPhone: true,
       status: true,
+      payoutAccountRef: true,
+      payoutAccountLabel: true,
+      billingName: true,
+      billingTaxId: true,
+      billingAddress: true,
     },
   });
   if (!store) notFound();
@@ -80,6 +86,10 @@ export default async function StoreSettingsPage({
         canProfile={canProfile}
         canTheme={canTheme}
       />
+
+      {/* Identity, not permission. A manager holding every permission still
+          does not see this. */}
+      {access.isOwner ? <OwnerZone store={store} /> : null}
     </div>
   );
 }

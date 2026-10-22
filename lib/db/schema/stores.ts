@@ -53,6 +53,25 @@ export const stores = pgTable(
     supportEmail: text("support_email"),
     supportPhone: text("support_phone"),
 
+    /**
+     * Where payouts go, as an opaque reference from the payment provider.
+     *
+     * Deliberately not bank details. An account number and sort code in this
+     * database would make it a target worth attacking and would drag the whole
+     * application into PCI/PSD2 scope for no benefit — the provider already
+     * holds them, and a reference is all that is needed to send money.
+     *
+     * Null means payouts cannot be sent yet.
+     */
+    payoutAccountRef: text("payout_account_ref"),
+    /** Shown to the owner so they can tell which account this is. */
+    payoutAccountLabel: text("payout_account_label"),
+
+    /** Legal entity name for invoices. Not the trading name. */
+    billingName: text("billing_name"),
+    billingTaxId: text("billing_tax_id"),
+    billingAddress: text("billing_address"),
+
     ...timestamps,
   },
   (t) => [
