@@ -15,6 +15,20 @@ import { db } from "@/lib/db";
  * Second, cancelled and refunded money is excluded from revenue but kept
  * available separately. Netting refunds into the revenue line hides the return
  * rate, which is usually the more actionable number.
+ *
+ * Third, and learned the hard way: every window here is
+ * `current_date - make_interval(days => days - 1)`, meaning the last N days
+ * *including today*. The series had to define it that way because
+ * generate_series produces exactly N rows; the point queries used
+ * `days` rather than `days - 1` and so covered N+1 days.
+ *
+ * Nothing looked wrong. Both numbers were plausible, both were rendered on the
+ * same admin page, and they disagreed by one day's trading — the per-store
+ * breakdown summed to more than the platform total it was breaking down. That
+ * is the kind of discrepancy a finance person finds, cannot explain, and stops
+ * trusting the whole dashboard over. Off-by-one in a date window is not a
+ * rounding difference; it is a day of real orders appearing in one number and
+ * not the other.
  */
 
 export type DailyPoint = {
@@ -144,7 +158,7 @@ export async function orderValuesForStore(
     join orders o on o.id = so.order_id
     where so.store_id = ${storeId}
       and so.status not in ('cancelled', 'refunded')
-      and o.placed_at >= current_date - make_interval(days => ${days})
+      and o.placed_at >= current_date - make_interval(days => ${days - 1})
   `);
   return rows.map((row) => Number(row.gross));
 }
@@ -184,7 +198,7 @@ export async function productPerformance(
       join sub_orders so on so.id = oi.sub_order_id
       join orders o on o.id = so.order_id
       where so.status not in ('cancelled', 'refunded')
-        and o.placed_at >= current_date - make_interval(days => ${days})
+        and o.placed_at >= current_date - make_interval(days => ${days - 1})
     )
     select
       p.id as product_id,
@@ -337,7 +351,7 @@ export async function repeatPurchaseForStore(storeId: string, days = 365) {
       where so.store_id = ${storeId}
         and so.status not in ('cancelled', 'refunded')
         and o.buyer_id is not null
-        and o.placed_at >= current_date - make_interval(days => ${days})
+        and o.placed_at >= current_date - make_interval(days => ${days - 1})
       group by o.buyer_id
     )
     select
@@ -388,7 +402,7 @@ export async function storePerformance(
       from sub_orders so
       join orders o on o.id = so.order_id
       where so.status not in ('cancelled', 'refunded')
-        and o.placed_at >= current_date - make_interval(days => ${days})
+        and o.placed_at >= current_date - make_interval(days => ${days - 1})
     )
     select
       s.id as store_id,
@@ -480,7 +494,7 @@ export async function categoryPerformance(days = 180) {
     join sub_orders so on so.id = oi.sub_order_id
       and so.status not in ('cancelled', 'refunded')
     join orders o on o.id = so.order_id
-      and o.placed_at >= current_date - make_interval(days => ${days})
+      and o.placed_at >= current_date - make_interval(days => ${days - 1})
     join product_variants pv on pv.id = oi.variant_id
     join products p on p.id = pv.product_id
     join lineage on lineage.category_id = p.category_id
@@ -503,7 +517,7 @@ export async function refundCounts(storeId?: string, days = 180) {
       count(*) filter (where so.status in ('refunded', 'cancelled'))::text as refunded
     from sub_orders so
     join orders o on o.id = so.order_id
-    where o.placed_at >= current_date - make_interval(days => ${days})
+    where o.placed_at >= current_date - make_interval(days => ${days - 1})
       ${storeId ? sql`and so.store_id = ${storeId}` : sql``}
   `);
 

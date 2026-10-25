@@ -201,7 +201,9 @@ async function main() {
     join orders o on o.id = so.order_id
     where so.store_id = ${store.id}
       and so.status not in ('cancelled','refunded')
-      and o.placed_at >= current_date - interval '180 days'
+      -- The same window the queries use: the last 180 days including
+      -- today. Written as 179 here for the same reason it is days - 1 there.
+      and o.placed_at >= current_date - interval '179 days'
   `);
   const productTotal = productRevenue.reduce((s, v) => s + v, 0);
   check(

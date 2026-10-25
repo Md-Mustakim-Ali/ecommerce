@@ -72,10 +72,12 @@ treat a hit on one of those four as "not audited" rather than "not built".
 
 | Capability | State |
 |---|---|
-| Transactional email | none. `requireEmailVerification` is off and seeded users are marked verified, because nothing can send |
+| Transactional email | **done** — `lib/email` port, console adapter in dev, Resend in production. `requireEmailVerification` now follows whether a provider is configured |
 | Real payments | deliberate. Deferred to a separate project; the order page offers a development-only demo settlement that runs the real ledger split |
 | Image hosting | local disk via `lib/storage`. Development only — swap the adapter in `lib/storage/index.ts` for S3 or R2 |
-| Rate limiting | none |
+| Error tracking, structured logging | **done** — `lib/observability`. Logs redact credentials; reporting is off without a DSN |
+| Backups | **done** — `pnpm db:verify-backup` dumps, restores into a scratch database and compares every table |
+| Rate limiting | **done** — Postgres-backed fixed windows on sign-in, sign-up, mail-sending endpoints and checkout |
 
 ---
 

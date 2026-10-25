@@ -155,14 +155,26 @@ async function main() {
       );
 
       // --- isolation between two sellers on one order ----------------------
+      //
+      // Scoped to this order, not to the whole store. An earlier version
+      // counted every note the second store had ever received and asserted it
+      // was one — which held only while no real notes existed, and started
+      // failing the moment somebody wrote one through the interface. A test
+      // that depends on the rest of the database being empty is a test that
+      // will be deleted rather than fixed.
       const otherSellerView = await tx
         .select({ id: orderNotes.id })
         .from(orderNotes)
         .innerJoin(subOrders, eq(subOrders.id, orderNotes.subOrderId))
-        .where(eq(subOrders.storeId, second.storeId));
+        .where(
+          and(
+            eq(subOrders.storeId, second.storeId),
+            eq(subOrders.orderId, second.orderId),
+          ),
+        );
 
       check(
-        "the second seller sees only their own note",
+        "the second seller sees only their own note on this order",
         otherSellerView.length === 1,
         `${otherSellerView.length} row`,
       );
