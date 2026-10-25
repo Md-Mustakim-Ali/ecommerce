@@ -6,7 +6,15 @@ import { z } from "zod";
 import { requirePlatformPermission } from "@/lib/auth/access";
 import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
-import { auditLog, ledgerEntries, payouts, stores } from "@/lib/db/schema";
+import {
+  auditLog,
+  ledgerEntries,
+  payouts,
+  stores,
+  user,
+} from "@/lib/db/schema";
+import { sendEmail } from "@/lib/email";
+import { payoutNotice } from "@/lib/email/templates";
 import { storeBalance } from "@/lib/money/ledger";
 
 /**
@@ -208,6 +216,16 @@ export async function initiatePayoutAction(
       });
 
       return { payoutId: payout.id, amount };
+    });
+
+    // After the transaction. The seller is told money is coming only once the
+    // ledger says it is, and a failed send does not undo the payout.
+    await notifyPayout({
+      storeId: data.storeId,
+      storeName: store.name,
+      amountCents: result.amount,
+      currency: data.currency,
+      reference: result.payoutId,
     });
 
     revalidatePath("/admin/payouts");
@@ -420,4 +438,38 @@ export async function storeBalanceForAdmin(storeId: string, currency = "USD") {
   await requirePlatformPermission("platform.payout.initiate");
   const balance = await storeBalance(db, z.uuid().parse(storeId), currency);
   return Number(balance);
+}
+
+/**
+ * Tells a store owner money has been sent.
+ *
+ * The owner, not every staff member: a payout is the owner's business, and
+ * mailing a warehouse account about the store's revenue is a disclosure nobody
+ * asked for.
+ */
+async function notifyPayout(input: {
+  storeId: string;
+  storeName: string;
+  amountCents: number;
+  currency: string;
+  reference: string;
+}) {
+  const [owner] = await db
+    .select({ email: user.email })
+    .from(stores)
+    .innerJoin(user, eq(user.id, stores.ownerId))
+    .where(eq(stores.id, input.storeId))
+    .limit(1);
+
+  if (!owner) return;
+
+  await sendEmail(
+    payoutNotice({
+      to: owner.email,
+      storeName: input.storeName,
+      amountCents: input.amountCents,
+      currency: input.currency,
+      reference: input.reference,
+    }),
+  );
 }

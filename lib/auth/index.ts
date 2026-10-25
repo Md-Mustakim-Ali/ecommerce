@@ -5,6 +5,8 @@ import { nextCookies } from "better-auth/next-js";
 // does not resolve tsconfig path aliases. Keep these two imports relative or
 // `pnpm auth:generate` breaks.
 import { db } from "../db";
+import { emailIsConfigured, sendEmail } from "../email";
+import { resetPassword, verifyEmail } from "../email/templates";
 import { env } from "../env";
 
 export const auth = betterAuth({
@@ -20,10 +22,31 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    // Phase 5 wires transactional email; until then a verification gate would
-    // make sign-up untestable. Flip this on with the email provider.
-    requireEmailVerification: false,
+    /**
+     * Gated on there being a provider that can actually send.
+     *
+     * Turning this on without one locks every new account out permanently,
+     * waiting for a message that will never arrive — so it follows the
+     * configuration rather than being a flag somebody has to remember to flip
+     * on the same deploy as the API key.
+     */
+    requireEmailVerification: emailIsConfigured(),
     minPasswordLength: 12,
+
+    async sendResetPassword({ user: account, url }) {
+      await sendEmail(resetPassword({ to: account.email, url }));
+    },
+  },
+
+  emailVerification: {
+    // Straight after sign-up, so nobody has to find a "resend" button.
+    sendOnSignUp: true,
+    // The link signs them in as well. Asking someone to verify and then type
+    // the password they just chose is a step with no security value.
+    autoSignInAfterVerification: true,
+    async sendVerificationEmail({ user: account, url }) {
+      await sendEmail(verifyEmail({ to: account.email, url }));
+    },
   },
 
   session: {

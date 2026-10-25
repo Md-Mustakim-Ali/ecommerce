@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { Plus } from "lucide-react";
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductRows } from "@/components/dashboard/product-rows";
@@ -10,15 +9,8 @@ import { requireStorePermission } from "@/lib/auth/access";
 import { listProductsForStore } from "@/lib/catalog/product-editor";
 import { db } from "@/lib/db";
 import { stores } from "@/lib/db/schema";
-import { formatMoney } from "@/lib/money/format";
 
 export const metadata: Metadata = { title: "Products" };
-
-const STATUS_BADGE = {
-  active: { label: "Live", variant: "positive" as const },
-  draft: { label: "Draft", variant: "neutral" as const },
-  archived: { label: "Archived", variant: "critical" as const },
-};
 
 /**
  * The seller's listings.

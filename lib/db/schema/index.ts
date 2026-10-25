@@ -15,6 +15,7 @@ export * from "./discounts";
 export * from "./identity";
 export * from "./money";
 export * from "./orders";
+export * from "./ratelimit";
 export * from "./rbac";
 export * from "./refunds";
 export * from "./reviews";

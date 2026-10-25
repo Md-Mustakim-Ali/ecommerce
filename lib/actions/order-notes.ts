@@ -6,7 +6,15 @@ import { z } from "zod";
 import { requireStorePermission } from "@/lib/auth/access";
 import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
-import { auditLog, orderNotes, orders, subOrders } from "@/lib/db/schema";
+import {
+  auditLog,
+  orderNotes,
+  orders,
+  stores,
+  subOrders,
+} from "@/lib/db/schema";
+import { sendEmail } from "@/lib/email";
+import { buyerMessageNotice } from "@/lib/email/templates";
 
 /**
  * Notes and buyer messages on an order.
@@ -85,6 +93,11 @@ export async function postOrderNoteAction(
       targetId: sub.id,
       after: { length: data.body.length },
     });
+
+    // A message the buyer only sees by revisiting the order page is a message
+    // they will not see. Mail is what makes this a conversation rather than a
+    // note in a drawer.
+    await notifyBuyerOfMessage(sub.id, data.body);
   }
 
   revalidatePath(`/dashboard/${data.storeId}/orders`);
@@ -302,4 +315,38 @@ export async function listNotesForStore(
     readAt: row.readAt?.toISOString() ?? null,
     mine: !!session && row.authorId === session.user.id,
   }));
+}
+
+/**
+ * Emails the buyer that the store has written to them.
+ *
+ * Sends to the address on the order, which is where a guest checkout's contact
+ * details live — using the account's address instead would silently skip every
+ * guest.
+ */
+async function notifyBuyerOfMessage(subOrderId: string, body: string) {
+  const [row] = await db
+    .select({
+      email: orders.email,
+      orderNumber: orders.orderNumber,
+      orderId: orders.id,
+      storeName: stores.name,
+    })
+    .from(subOrders)
+    .innerJoin(orders, eq(orders.id, subOrders.orderId))
+    .innerJoin(stores, eq(stores.id, subOrders.storeId))
+    .where(eq(subOrders.id, subOrderId))
+    .limit(1);
+
+  if (!row) return;
+
+  await sendEmail(
+    buyerMessageNotice({
+      to: row.email,
+      storeName: row.storeName,
+      orderNumber: row.orderNumber,
+      orderId: row.orderId,
+      body,
+    }),
+  );
 }

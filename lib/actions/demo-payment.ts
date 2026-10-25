@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
+import { sendOrderConfirmation } from "@/lib/email/notify";
 import { recordOrderPaid } from "@/lib/money/ledger";
 
 /**
@@ -75,6 +76,13 @@ export async function confirmDemoPaymentAction(input: {
     orderId: order.id,
     paymentIntentId: order.paymentIntentId ?? `demo_${order.id}`,
   });
+
+  // Only on the settle that actually recorded it. recordOrderPaid is
+  // idempotent, so a second call returns recorded: false — sending here
+  // unconditionally would mail a duplicate receipt on every retry.
+  if (result.recorded) {
+    await sendOrderConfirmation(order.id);
+  }
 
   revalidatePath(`/orders/${order.id}`);
   revalidatePath("/account/orders");

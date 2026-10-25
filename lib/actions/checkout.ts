@@ -10,6 +10,7 @@ import { orders } from "@/lib/db/schema";
 import { resolveDiscountForCart } from "@/lib/discounts/resolve";
 import { placeOrder } from "@/lib/orders/create";
 import { paymentProvider } from "@/lib/payments";
+import { callerKey, checkRateLimit } from "@/lib/ratelimit";
 import { getPlatformSettings, shippingFor } from "@/lib/settings";
 
 /**
@@ -64,6 +65,17 @@ export async function placeOrderAction(
   }
 
   const session = await getSession();
+
+  // Before any work, and keyed on the account when there is one so a signed-in
+  // attacker cannot get a fresh allowance by changing address. Card testing —
+  // running stolen numbers through a checkout to see which still work — is the
+  // thing this stops, and the chargebacks for it land on this platform.
+  const limit = await checkRateLimit(
+    "checkout",
+    session?.user.id ?? (await callerKey()),
+  );
+  if (!limit.ok) return { ok: false, message: limit.message };
+
   const cart = await getCart();
 
   if (cart.lines.length === 0) {

@@ -6,7 +6,9 @@ import { z } from "zod";
 import { requireStorePermission } from "@/lib/auth/access";
 import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
-import { auditLog, orders, subOrders } from "@/lib/db/schema";
+import { auditLog, orders, stores, subOrders } from "@/lib/db/schema";
+import { sendEmail } from "@/lib/email";
+import { shipmentNotice } from "@/lib/email/templates";
 
 /**
  * Fulfilment actions for a seller.
@@ -146,8 +148,50 @@ export async function shipOrderAction(
     await syncOrderStatus(tx, sub.orderId);
   });
 
+  // After the transaction commits, and never inside it. Mail cannot be
+  // un-sent, so telling a buyer their parcel shipped and then rolling the
+  // shipment back would leave them waiting for something that is not coming.
+  await notifyShipped(subOrderId);
+
   revalidatePath(`/dashboard/${storeId}/orders`);
   return { ok: true, message: "Marked shipped." };
+}
+
+/**
+ * Tells the buyer their parcel is on its way.
+ *
+ * Failures are swallowed by sendEmail. The order has shipped either way, and
+ * refusing to record a real shipment because a mail provider was down would be
+ * the wrong trade.
+ */
+async function notifyShipped(subOrderId: string) {
+  const [row] = await db
+    .select({
+      email: orders.email,
+      orderNumber: orders.orderNumber,
+      orderId: orders.id,
+      storeName: stores.name,
+      carrier: subOrders.trackingCarrier,
+      trackingNumber: subOrders.trackingNumber,
+    })
+    .from(subOrders)
+    .innerJoin(orders, eq(orders.id, subOrders.orderId))
+    .innerJoin(stores, eq(stores.id, subOrders.storeId))
+    .where(eq(subOrders.id, subOrderId))
+    .limit(1);
+
+  if (!row) return;
+
+  await sendEmail(
+    shipmentNotice({
+      to: row.email,
+      orderNumber: row.orderNumber,
+      orderId: row.orderId,
+      storeName: row.storeName,
+      carrier: row.carrier,
+      trackingNumber: row.trackingNumber,
+    }),
+  );
 }
 
 export async function markDeliveredAction(input: {

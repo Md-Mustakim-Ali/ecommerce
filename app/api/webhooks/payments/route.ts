@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
+import { sendOrderConfirmation } from "@/lib/email/notify";
 import { recordOrderPaid } from "@/lib/money/ledger";
 import { paymentProvider } from "@/lib/payments";
 
@@ -73,6 +74,13 @@ export async function POST(request: Request) {
         orderId: order.id,
         paymentIntentId: event.intentId,
       });
+
+      // Only on the call that recorded it. Providers retry webhooks freely,
+      // and recordOrderPaid is idempotent precisely so a retry is harmless —
+      // mailing a receipt unconditionally would undo that.
+      if (result.recorded) {
+        await sendOrderConfirmation(order.id);
+      }
 
       return Response.json({
         received: true,
