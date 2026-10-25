@@ -37,7 +37,10 @@ export default function ErrorBoundary({
   }, [error]);
 
   return (
-    <div className="mx-auto flex min-h-[60dvh] max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
+    // <main> for the same reason as not-found: an error boundary can replace a
+    // page that had the layout's landmark, and losing it strands anyone
+    // navigating by landmark.
+    <main className="mx-auto flex min-h-[60dvh] max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
       <div className="flex flex-col gap-2">
         <h1 className="font-semibold text-xl tracking-tight">
           Something went wrong
@@ -64,6 +67,6 @@ export default function ErrorBoundary({
           this if you contact us.
         </p>
       ) : null}
-    </div>
+    </main>
   );
 }

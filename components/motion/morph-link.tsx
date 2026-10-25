@@ -57,8 +57,20 @@ export function MorphLink({
       }
 
       event.preventDefault();
-      const target = ref.current?.querySelector<HTMLElement>("[data-morph]");
-      navigateWithTransition(() => router.push(href), target ?? null, name);
+
+      // Looked up inside the link first, then within the nearest
+      // [data-morph-scope] ancestor. A card gives its one accessible link to
+      // the title and marks the image decorative, so the element that should
+      // travel is a sibling rather than a child — searching only inside would
+      // mean the morph worked with a mouse and not with a keyboard.
+      const target =
+        ref.current?.querySelector<HTMLElement>("[data-morph]") ??
+        ref.current
+          ?.closest("[data-morph-scope]")
+          ?.querySelector<HTMLElement>("[data-morph]") ??
+        null;
+
+      navigateWithTransition(() => router.push(href), target, name);
     },
     [href, name, router],
   );

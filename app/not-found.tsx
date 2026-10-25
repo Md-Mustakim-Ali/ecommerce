@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
  */
 export default function NotFound() {
   return (
-    <div className="mx-auto flex min-h-[60dvh] max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
+    // <main>, not <div>: this page renders outside the shop layout, so the
+    // layout's landmark is not there to wrap it. Without one, "skip to main
+    // content" has nowhere to go on the page a lost visitor is most likely to
+    // land on.
+    <main className="mx-auto flex min-h-[60dvh] max-w-md flex-col items-center justify-center gap-5 px-4 text-center">
       <div className="flex flex-col gap-2">
         <p className="font-mono text-tertiary-text text-sm">404</p>
         <h1 className="font-semibold text-xl tracking-tight">Nothing here</h1>
@@ -34,6 +38,6 @@ export default function NotFound() {
           Home
         </Button>
       </div>
-    </div>
+    </main>
   );
 }

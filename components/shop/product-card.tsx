@@ -61,12 +61,24 @@ export function ProductCard({
 
   return (
     <PointerSurface className={cn("group rounded-xl", className)}>
-      <div className="flex h-full flex-col gap-3 rounded-xl bg-surface-1 p-3 shadow-e1">
+      <div
+        data-morph-scope
+        className="flex h-full flex-col gap-3 rounded-xl bg-surface-1 p-3 shadow-e1"
+      >
         <div className="relative">
-          <MorphLink
+          {/*
+            Decorative, and deliberately so. The title below links to the same
+            product, so leaving this one in the accessibility tree would give
+            every card two identical links and every grid forty-eight tab
+            stops. It also has no accessible name of its own when a product has
+            no photo — nothing in it but an empty div — which is a nameless
+            link a screen reader would announce as "link".
+          */}
+          <Link
             href={`/p/${product.slug}`}
-            name={productMorphName(product.slug)}
             prefetch
+            aria-hidden
+            tabIndex={-1}
             className={cn(
               "block overflow-hidden rounded-lg outline-none",
               "focus-visible:ring-3 focus-visible:ring-ring/40",
@@ -95,7 +107,7 @@ export function ProductCard({
                 <div className="absolute inset-0 bg-surface-2" />
               )}
             </div>
-          </MorphLink>
+          </Link>
 
           {/* Status, top-left. */}
           {soldOut || onSale || lowStock ? (
@@ -137,13 +149,18 @@ export function ProductCard({
             />
           </div>
 
-          <Link
+          {/*
+            The card's one accessible link, so it is also the one that morphs.
+            MorphLink finds the image through data-morph-scope on the card.
+          */}
+          <MorphLink
             href={`/p/${product.slug}`}
+            name={productMorphName(product.slug)}
             prefetch
             className="line-clamp-2 font-medium text-sm leading-snug outline-none hover:underline focus-visible:underline"
           >
             {product.title}
-          </Link>
+          </MorphLink>
 
           <div className="mt-auto flex items-end justify-between gap-2 pt-2">
             {/*

@@ -25,7 +25,10 @@
     "db:reset": "tsx --env-file=.env.local scripts/seed.ts --reset",
     "db:backup": "tsx --env-file=.env.local scripts/backup.ts backup",
     "db:restore": "tsx --env-file=.env.local scripts/backup.ts restore",
-    "db:verify-backup": "tsx --env-file=.env.local scripts/backup.ts verify"
+    "db:verify-backup": "tsx --env-file=.env.local scripts/backup.ts verify",
+    "verify:auth": "tsx --env-file=.env.local scripts/verify-authorization.ts",
+    "verify:a11y": "tsx --env-file=.env.local scripts/verify-accessibility.ts",
+    "load:checkout": "tsx --env-file=.env.local scripts/load-test-checkout.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
