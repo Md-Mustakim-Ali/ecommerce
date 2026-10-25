@@ -22,7 +22,10 @@
     "db:studio": "drizzle-kit studio",
     "auth:generate": "node --env-file=.env.local node_modules/auth/dist/index.mjs generate --config lib/auth/index.ts --output lib/db/schema/auth.ts --y",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
-    "db:reset": "tsx --env-file=.env.local scripts/seed.ts --reset"
+    "db:reset": "tsx --env-file=.env.local scripts/seed.ts --reset",
+    "db:backup": "tsx --env-file=.env.local scripts/backup.ts backup",
+    "db:restore": "tsx --env-file=.env.local scripts/backup.ts restore",
+    "db:verify-backup": "tsx --env-file=.env.local scripts/backup.ts verify"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

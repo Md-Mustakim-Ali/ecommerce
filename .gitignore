@@ -91,3 +91,4 @@ $RECYCLE.BIN/
 
 # Uploaded images. Local storage adapter only; production uses object storage.
 /public/uploads/
+backups/

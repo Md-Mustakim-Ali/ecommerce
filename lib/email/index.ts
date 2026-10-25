@@ -2,6 +2,7 @@
 // `auth` CLI loads that through jiti, which does not resolve tsconfig path
 // aliases. Keep these relative or `pnpm auth:generate` breaks.
 import { env } from "../env";
+import { log } from "../observability/logger";
 import { ConsoleEmailProvider } from "./console";
 import type { EmailMessage, EmailProvider, SendResult } from "./provider";
 import { looksLikeEmail } from "./provider";
@@ -48,13 +49,14 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
   const result = await emailProvider().send(message);
 
   if (!result.ok) {
-    // Logged with the subject and recipient but never the body: a receipt
-    // contains an address and an order history, and logs are the least
-    // protected place either could end up.
-    console.error("[email] send failed", {
+    // The subject and recipient, never the body: a receipt contains an address
+    // and an order history, and logs are the least protected place either
+    // could end up.
+    log.error("email send failed", {
       to: message.to,
       subject: message.subject,
-      error: result.error,
+      provider: emailProvider().name,
+      reason: result.error,
     });
   }
 
