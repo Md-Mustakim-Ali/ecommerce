@@ -8,18 +8,34 @@ model behind it. The test that catches it is not "does the page render" but
 **"could a user have produced this state through the app?"** — apply that to
 anything below before ticking it off.
 
-Method: cross-reference `lib/auth/permissions.ts` against every call site under
-`app/`, `components/` and `lib/actions/`. A permission with no call site is a
-capability with no interface.
+Method, in two passes. The first is necessary and **not sufficient**:
+cross-reference `lib/auth/permissions.ts` against call sites. The second is the
+one that finds real gaps — check every exported server action for a caller in
+`app/` or `components/`. An action nothing calls is a capability with no
+interface, even when its permission is checked somewhere.
+
+That second pass is what caught the page builder: `page.update` had call sites
+and looked fine, while `addBlockAction` had none, so a page created through the
+interface came out empty and stayed empty. The seeded pages had blocks, so the
+storefront looked finished.
 
 ```bash
+# Pass 1 — permissions with no call site.
 for p in $(grep -o '"[a-z_]*\.[a-z_.]*"' lib/auth/permissions.ts | tr -d '"' | sort -u); do
   n=$(grep -rl "\"$p\"" app components lib/actions 2>/dev/null | wc -l)
   [ "$n" -eq 0 ] && echo "UNUSED $p"
 done
+
+# Pass 2 — server actions no screen calls. This is the one that finds things.
+for f in lib/actions/*.ts; do
+  grep -oP '^export async function \K\w+' "$f" | while read fn; do
+    n=$(grep -rl "$fn" app components 2>/dev/null | wc -l)
+    [ "$n" -eq 0 ] && echo "UNCALLED $fn ($(basename $f))"
+  done
+done
 ```
 
-Last run: 2026-09-04. Zero unused. Note the script cannot see an
+Last run: 2026-09-04. Both passes clean — zero unused permissions, zero uncalled actions. Note the script cannot see an
 OWNER_ONLY_ACTION unless something writes it as an audit-log `action`, so
 treat a hit on one of those four as "not audited" rather than "not built".
 
@@ -43,6 +59,8 @@ treat a hit on one of those four as "not audited" rather than "not built".
 | Discount code management | `discount_codes` | **done** — store and platform scopes; sellers see marketplace codes read-only |
 | Where a store's offer sits in the product **list** (cards/grid) | `placements` | **done** — new `in_grid` slot, interleaved after the first row |
 | Owner-only: transfer ownership, close store, billing, payout destination | 4 hardcoded owner actions | **done** — identity-checked, never permission-checked |
+| Add content to a page (blocks) | `page_blocks` | **done** — the eight block types now have an editor; pages used to be created empty and stay empty |
+| See your refund requests and their outcome | `refund_requests` | **done** — on the payouts page, with the reviewer's note |
 
 ## Platform / admin
 
@@ -65,6 +83,7 @@ treat a hit on one of those four as "not audited" rather than "not built".
 
 | Capability | Table | State |
 |---|---|---|
+| Delete your own review | `reviews` | **done** — only your own; moderation could already remove one, the author could not |
 | Saved items / wishlist page | `saved_items` | **done** |
 | Saved addresses | `addresses` | **done** — the default pre-fills checkout |
 

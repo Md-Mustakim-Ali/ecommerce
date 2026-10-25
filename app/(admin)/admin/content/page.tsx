@@ -26,6 +26,7 @@ export default async function AdminContentPage() {
 
       <ContentManager
         scope={scope}
+        editorPathPrefix="/admin/content"
         pages={pages}
         placements={placements.map((placement) => ({
           id: placement.id,

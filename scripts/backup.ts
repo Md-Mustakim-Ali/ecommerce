@@ -87,7 +87,7 @@ function run(
       shell: false,
     });
 
-    if (options.stdin) options.stdin.pipe(child.stdin!);
+    if (options.stdin && child.stdin) options.stdin.pipe(child.stdin);
     if (options.stdout) child.stdout?.pipe(options.stdout);
 
     let stderr = "";

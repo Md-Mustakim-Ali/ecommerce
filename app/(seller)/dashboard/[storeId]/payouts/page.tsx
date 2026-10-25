@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { listStoreRefundsAction } from "@/lib/actions/refunds";
 import { requireStorePermission } from "@/lib/auth/access";
 import { db } from "@/lib/db";
 import { payouts, stores } from "@/lib/db/schema";
@@ -19,6 +20,16 @@ const ENTRY_LABEL: Record<string, string> = {
   adjustment: "Adjustment",
   payout: "Payout",
   fee: "Fee",
+};
+
+const REFUND_BADGE: Record<
+  string,
+  "default" | "muted" | "neutral" | "positive" | "critical"
+> = {
+  pending: "neutral",
+  approved: "positive",
+  rejected: "critical",
+  processed: "positive",
 };
 
 const PAYOUT_BADGE: Record<
@@ -57,7 +68,7 @@ export default async function StorePayoutsPage({
 
   const canReadLedger = access.permissions.has("ledger.view");
 
-  const [balance, history, entries] = await Promise.all([
+  const [balance, history, entries, refunds] = await Promise.all([
     storeBalance(db, storeId, "USD"),
     db
       .select()
@@ -66,6 +77,10 @@ export default async function StorePayoutsPage({
       .orderBy(desc(payouts.createdAt))
       .limit(20),
     canReadLedger ? storeLedger(db, storeId, 50) : Promise.resolve([]),
+    // A seller who files a refund request and never sees what happened to it
+    // has filed it into a void — and the money leaves their balance either
+    // way, so this is the only place the two can be reconciled.
+    listStoreRefundsAction(storeId),
   ]);
 
   const inFlight = history
@@ -146,6 +161,52 @@ export default async function StorePayoutsPage({
                     {payout.status}
                   </Badge>
                 </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="font-medium text-sm">Refund requests</h2>
+          <p className="text-secondary-text text-xs">
+            You ask; the platform decides. Nothing moves until it is approved,
+            and an approval shows up in the ledger below as its own entry.
+          </p>
+        </div>
+
+        {refunds.length === 0 ? (
+          <p className="rounded-md border border-border border-dashed px-4 py-6 text-center text-secondary-text text-sm">
+            No refunds requested.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-px overflow-hidden rounded-md bg-border">
+            {refunds.map((refund) => (
+              <li
+                key={refund.id}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-surface-1 px-4 py-3"
+              >
+                <span className="tabular shrink-0 font-medium text-sm">
+                  {formatMoney(refund.amountCents, "USD")}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-secondary-text text-sm">
+                  {refund.reason}
+                </span>
+                {/*
+                  The reviewer's note is the whole point of showing a rejection.
+                  "Rejected" alone tells a seller nothing they can act on.
+                */}
+                {refund.reviewNote ? (
+                  <span className="w-full text-tertiary-text text-xs">
+                    {refund.reviewNote}
+                  </span>
+                ) : null}
+                <Badge variant={REFUND_BADGE[refund.status] ?? "neutral"}>
+                  {refund.status}
+                </Badge>
               </li>
             ))}
           </ul>

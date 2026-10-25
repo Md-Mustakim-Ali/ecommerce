@@ -38,7 +38,7 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
   const [ancestry, reviews, breakdown, reviewable] = await Promise.all([
     // Full path, so a placement targeting a parent category reaches this page.
     getCategoryAncestry(product.categorySlug),
-    listReviewsForProduct(product.id),
+    listReviewsForProduct(product.id, 20, session?.user.id ?? null),
     ratingBreakdown(product.id),
     // Scoped to this product, so the form only appears for someone who has
     // actually had this delivered.

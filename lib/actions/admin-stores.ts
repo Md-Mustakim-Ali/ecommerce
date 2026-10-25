@@ -434,12 +434,6 @@ export async function listStoresForAdminAction() {
     );
 }
 
-export async function storeBalanceForAdmin(storeId: string, currency = "USD") {
-  await requirePlatformPermission("platform.payout.initiate");
-  const balance = await storeBalance(db, z.uuid().parse(storeId), currency);
-  return Number(balance);
-}
-
 /**
  * Tells a store owner money has been sent.
  *

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { cache } from "react";
 import { db } from "@/lib/db";
 import {
@@ -214,7 +214,7 @@ export async function listPagesInScope(scope: {
   scope: "platform" | "store";
   storeId?: string;
 }) {
-  return db
+  const rows = await db
     .select({
       id: pages.id,
       slug: pages.slug,
@@ -234,6 +234,31 @@ export async function listPagesInScope(scope: {
         : isNull(pages.storeId),
     )
     .orderBy(desc(pages.updatedAt));
+
+  if (rows.length === 0) return rows.map((row) => ({ ...row, blockCount: 0 }));
+
+  // A separate grouped query rather than a correlated subquery. Drizzle
+  // renders an outer column reference inside a raw sql template unqualified,
+  // and Postgres then resolves it against the subquery's own tables — the
+  // recurring bug recorded in docs/backend-ui-gaps.md.
+  const counts = await db
+    .select({
+      pageId: pageBlocks.pageId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(pageBlocks)
+    .where(
+      inArray(
+        pageBlocks.pageId,
+        rows.map((row) => row.id),
+      ),
+    )
+    .groupBy(pageBlocks.pageId);
+
+  return rows.map((row) => ({
+    ...row,
+    blockCount: counts.find((entry) => entry.pageId === row.id)?.count ?? 0,
+  }));
 }
 
 /** One page with its blocks, for the editor. Drafts included. */

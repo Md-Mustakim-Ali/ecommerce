@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { LayoutList, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -39,6 +39,8 @@ export type PageRow = {
   excerpt: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
+  /** Shown beside the Content button, so an empty page is visible at a glance. */
+  blockCount: number;
 };
 
 export type PlacementRow = {
@@ -75,12 +77,15 @@ export function ContentManager({
   pages,
   placements,
   publicPathPrefix,
+  editorPathPrefix,
 }: {
   scope: Scope;
   pages: PageRow[];
   placements: PlacementRow[];
   /** Where a published page lives publicly, e.g. /pages or /store/oakline. */
   publicPathPrefix: string;
+  /** Where the block editor lives, e.g. /admin/content or /dashboard/x/content. */
+  editorPathPrefix: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -139,6 +144,23 @@ export function ContentManager({
                         View
                       </Button>
                     ) : null}
+                    {/*
+                      Two different edits, and they are genuinely different
+                      jobs: the title and slug are a small form that belongs
+                      inline, while the page's content is a builder that needs
+                      the whole screen.
+                    */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      render={<Link href={`${editorPathPrefix}/${page.id}`} />}
+                    >
+                      <LayoutList aria-hidden />
+                      Content
+                      <span className="ml-1 text-tertiary-text">
+                        {page.blockCount}
+                      </span>
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -148,7 +170,7 @@ export function ContentManager({
                       }
                     >
                       <Pencil aria-hidden />
-                      Edit
+                      Details
                     </Button>
                     <Button
                       size="sm"

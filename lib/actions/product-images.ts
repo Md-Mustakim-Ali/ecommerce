@@ -313,26 +313,3 @@ export async function tagProductImageAction(
         : "Tagged. It will show when those options are picked.",
   };
 }
-
-/** Values this product offers, grouped, for the tag picker. */
-export async function offeredValuesAction(input: {
-  storeId: string;
-  productId: string;
-}) {
-  const storeId = z.uuid().parse(input.storeId);
-  const productId = z.uuid().parse(input.productId);
-  await requireStorePermission(storeId, "product.view");
-
-  return db
-    .select({
-      valueId: attributeValues.id,
-      value: attributeValues.value,
-      attributeId: productAttributeValues.attributeId,
-    })
-    .from(productAttributeValues)
-    .innerJoin(
-      attributeValues,
-      eq(attributeValues.id, productAttributeValues.valueId),
-    )
-    .where(eq(productAttributeValues.productId, productId));
-}

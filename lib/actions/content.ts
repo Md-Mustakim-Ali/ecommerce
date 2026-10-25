@@ -365,6 +365,125 @@ export async function deleteBlockAction(
   return { ok: true, id: blockId, message: "Block removed." };
 }
 
+/**
+ * Edits a block's contents.
+ *
+ * Without this, changing a typo in a paragraph means deleting the block and
+ * writing it again from scratch, at the bottom of the page. Nobody does that
+ * twice; they stop using the page builder.
+ *
+ * The payload is re-validated against the block's own schema, exactly as on
+ * create — an edit is as good a way to smuggle a `javascript:` URL into a CTA
+ * as an insert is.
+ */
+export async function updateBlockAction(
+  input: Scope & { blockId: string; data: Record<string, unknown> },
+): Promise<ContentResult> {
+  const scope = scopeSchema.safeParse(input);
+  if (!scope.success) return { ok: false, message: "Invalid scope." };
+  const blockId = z.uuid().safeParse(input.blockId);
+  if (!blockId.success) return { ok: false, message: "Invalid request." };
+
+  if (scope.data.scope === "store") {
+    await requireStorePermission(scope.data.storeId, "page.update");
+  } else {
+    await requirePlatformPermission("platform.page.manage");
+  }
+
+  // Scoped through the page, so a block id from another store's page does not
+  // resolve however valid the uuid is.
+  const [block] = await db
+    .select({
+      id: pageBlocks.id,
+      type: pageBlocks.type,
+      slug: pages.slug,
+    })
+    .from(pageBlocks)
+    .innerJoin(pages, eq(pages.id, pageBlocks.pageId))
+    .where(
+      and(
+        eq(pageBlocks.id, blockId.data),
+        scope.data.scope === "store"
+          ? eq(pages.storeId, scope.data.storeId)
+          : isNull(pages.storeId),
+      ),
+    )
+    .limit(1);
+
+  if (!block) return { ok: false, message: "Block not found." };
+
+  // Validated against the type already stored, not one supplied by the caller.
+  // Letting the payload name its own type would allow a spacer to be rewritten
+  // as a banner with an unchecked link.
+  const validated = validateBlockInput(block.type, input.data);
+  if (!validated.ok) return { ok: false, message: validated.message };
+
+  await db
+    .update(pageBlocks)
+    .set({ data: validated.data })
+    .where(eq(pageBlocks.id, blockId.data));
+
+  revalidatePath(`/pages/${block.slug}`);
+  revalidatePath("/admin/content");
+  return { ok: true, id: blockId.data, message: "Saved." };
+}
+
+/**
+ * Reorders a page's blocks.
+ *
+ * Takes the full ordered list rather than a move instruction. A "move block up"
+ * endpoint has to reason about what the client currently believes the order is,
+ * and two people editing at once make that reasoning wrong; writing the whole
+ * order is idempotent and the last writer simply wins.
+ */
+export async function reorderBlocksAction(
+  input: Scope & { pageId: string; blockIds: string[] },
+): Promise<ContentResult> {
+  const scope = scopeSchema.safeParse(input);
+  if (!scope.success) return { ok: false, message: "Invalid scope." };
+  const pageId = z.uuid().safeParse(input.pageId);
+  const blockIds = z.array(z.uuid()).max(200).safeParse(input.blockIds);
+  if (!pageId.success || !blockIds.success) {
+    return { ok: false, message: "Invalid request." };
+  }
+
+  if (scope.data.scope === "store") {
+    await requireStorePermission(scope.data.storeId, "page.update");
+  } else {
+    await requirePlatformPermission("platform.page.manage");
+  }
+
+  const page = await pageInScope(pageId.data, scope.data);
+  if (!page) return { ok: false, message: "Page not found." };
+
+  // Every id has to belong to this page. Otherwise the list is a way to move
+  // another page's block — or to renumber it into this one.
+  const owned = await db
+    .select({ id: pageBlocks.id })
+    .from(pageBlocks)
+    .where(eq(pageBlocks.pageId, pageId.data));
+
+  const ownedIds = new Set(owned.map((row) => row.id));
+  if (
+    blockIds.data.length !== ownedIds.size ||
+    blockIds.data.some((id) => !ownedIds.has(id))
+  ) {
+    return { ok: false, message: "That ordering does not match this page." };
+  }
+
+  await db.transaction(async (tx) => {
+    for (const [position, id] of blockIds.data.entries()) {
+      await tx
+        .update(pageBlocks)
+        .set({ position })
+        .where(eq(pageBlocks.id, id));
+    }
+  });
+
+  revalidatePath(`/pages/${page.slug}`);
+  return { ok: true, id: pageId.data, message: "Reordered." };
+}
+
 // ---------------------------------------------------------------------------
 // Placements
 // ---------------------------------------------------------------------------

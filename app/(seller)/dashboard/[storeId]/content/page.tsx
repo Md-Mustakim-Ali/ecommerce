@@ -56,6 +56,7 @@ export default async function StoreContentPage({
           priority: placement.priority,
           targets: placement.targets,
         }))}
+        editorPathPrefix={`/dashboard/${storeId}/content`}
         publicPathPrefix={`/store/${store.slug}`}
       />
     </div>

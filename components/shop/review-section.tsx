@@ -1,3 +1,4 @@
+import { DeleteReview } from "@/components/shop/delete-review";
 import { RatingStars } from "@/components/shop/rating-stars";
 import { ReviewForm } from "@/components/shop/review-form";
 import { Separator } from "@/components/ui/separator";
@@ -126,6 +127,7 @@ export function ReviewSection({
                     <span className="text-positive text-xs">
                       Verified purchase
                     </span>
+                    {review.mine ? <DeleteReview reviewId={review.id} /> : null}
                     <time
                       dateTime={review.createdAt.toISOString()}
                       className="text-tertiary-text text-xs"

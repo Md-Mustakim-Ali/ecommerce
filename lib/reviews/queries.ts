@@ -27,11 +27,15 @@ export type ReviewRow = {
   authorName: string;
   /** The variant they actually bought, snapshotted on the order item. */
   variantLabel: string | null;
+  /** Whether the signed-in reader wrote it, so they can take it down. */
+  mine: boolean;
 };
 
 export async function listReviewsForProduct(
   productId: string,
   limit = 20,
+  /** The signed-in reader, so their own review can be marked. Null for guests. */
+  viewerId: string | null = null,
 ): Promise<ReviewRow[]> {
   const rows = await db
     .select({
@@ -42,6 +46,7 @@ export async function listReviewsForProduct(
       createdAt: reviews.createdAt,
       authorName: user.name,
       variantLabel: orderItems.variantLabel,
+      buyerId: reviews.buyerId,
     })
     .from(reviews)
     .innerJoin(user, eq(user.id, reviews.buyerId))
@@ -53,7 +58,13 @@ export async function listReviewsForProduct(
     .orderBy(desc(reviews.createdAt))
     .limit(limit);
 
-  return rows;
+  // Compared here rather than selected as a SQL boolean, so the buyer id never
+  // reaches the client. Knowing which account wrote a review is not something
+  // the page needs to hand out.
+  return rows.map(({ buyerId, ...row }) => ({
+    ...row,
+    mine: viewerId !== null && buyerId === viewerId,
+  }));
 }
 
 /** The 1–5 histogram, so the summary shows shape rather than just a mean. */
