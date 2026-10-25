@@ -63,6 +63,11 @@ export async function getProductForEditing(productId: string, storeId: string) {
       categoryId: products.categoryId,
       brandId: products.brandId,
       brandName: brands.name,
+      // The combobox works in whole Terms, so a partial one cannot be handed
+      // back to it as the current value.
+      brandSlug: brands.slug,
+      brandStatus: brands.status,
+      brandMergedIntoId: brands.mergedIntoId,
       status: products.status,
       stockDisplay: products.stockDisplay,
       lowStockThreshold: products.lowStockThreshold,
@@ -144,7 +149,13 @@ export async function getProductForEditing(productId: string, storeId: string) {
       .where(eq(productVariants.productId, productId)),
 
     db
-      .select({ id: tags.id, name: tags.name })
+      .select({
+        id: tags.id,
+        name: tags.name,
+        slug: tags.slug,
+        status: tags.status,
+        mergedIntoId: tags.mergedIntoId,
+      })
       .from(productTags)
       .innerJoin(tags, eq(tags.id, productTags.tagId))
       .where(eq(productTags.productId, productId)),

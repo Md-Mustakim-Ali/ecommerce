@@ -1,3 +1,4 @@
+import { asc, isNotNull } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,6 +8,8 @@ import {
   getProductForEditing,
   listAvailableAttributes,
 } from "@/lib/catalog/product-editor";
+import { db } from "@/lib/db";
+import { categories } from "@/lib/db/schema";
 import { ProductEditor } from "./product-editor";
 
 export async function generateMetadata({
@@ -31,9 +34,16 @@ export default async function EditProductPage({
   const { storeId, productId } = await params;
   const access = await requireStorePermission(storeId, "product.update");
 
-  const [product, available] = await Promise.all([
+  const [product, available, categoryOptions] = await Promise.all([
     getProductForEditing(productId, storeId),
     listAvailableAttributes(),
+    // Leaves only, matching the create form: a product belongs to
+    // "Headphones", not to "Electronics".
+    db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .where(isNotNull(categories.parentId))
+      .orderBy(asc(categories.name)),
   ]);
   if (!product) notFound();
 
@@ -94,7 +104,15 @@ export default async function EditProductPage({
           attributes: product.attributes,
           variants: product.variants,
           images: product.images,
+          categoryId: product.categoryId,
+          brandId: product.brandId,
+          brandName: product.brandName,
+          brandSlug: product.brandSlug,
+          brandStatus: product.brandStatus,
+          brandMergedIntoId: product.brandMergedIntoId,
+          tags: product.tags,
         }}
+        categories={categoryOptions}
         available={available}
         permissions={{
           manageVariants: access.permissions.has("variant.manage"),
@@ -102,6 +120,8 @@ export default async function EditProductPage({
           archive: access.permissions.has("product.archive"),
           proposeAttribute: access.permissions.has("attribute.propose"),
           delete: access.permissions.has("product.delete"),
+          proposeBrand: access.permissions.has("brand.propose"),
+          proposeTag: access.permissions.has("tag.propose"),
         }}
       />
     </div>

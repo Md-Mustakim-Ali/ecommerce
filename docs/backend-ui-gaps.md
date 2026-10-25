@@ -14,7 +14,12 @@ one that finds real gaps — check every exported server action for a caller in
 `app/` or `components/`. An action nothing calls is a capability with no
 interface, even when its permission is checked somewhere.
 
-That second pass is what caught the page builder: `page.update` had call sites
+A third pass helps too: every table, and whether anything writes to it. It is
+noisier — Better Auth owns four tables, and a write behind a dynamic table
+reference will not grep — but it is what caught the product's category, brand
+and tags being immutable after creation.
+
+The second pass is what caught the page builder: `page.update` had call sites
 and looked fine, while `addBlockAction` had none, so a page created through the
 interface came out empty and stayed empty. The seeded pages had blocks, so the
 storefront looked finished.
@@ -61,6 +66,7 @@ treat a hit on one of those four as "not audited" rather than "not built".
 | Owner-only: transfer ownership, close store, billing, payout destination | 4 hardcoded owner actions | **done** — identity-checked, never permission-checked |
 | Add content to a page (blocks) | `page_blocks` | **done** — the eight block types now have an editor; pages used to be created empty and stay empty |
 | See your refund requests and their outcome | `refund_requests` | **done** — on the payouts page, with the reviewer's note |
+| Change a product's category, brand or tags after creating it | `products.category_id`, `products.brand_id`, `product_tags` | **done** — all three were set once at creation and frozen |
 
 ## Platform / admin
 

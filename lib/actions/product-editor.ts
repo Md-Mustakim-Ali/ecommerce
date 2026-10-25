@@ -11,12 +11,16 @@ import {
   attributes,
   attributeValues,
   auditLog,
+  brands,
+  categories,
   orderItems,
   productAttributes,
   productAttributeValues,
   productImages,
   products,
+  productTags,
   productVariants,
+  tags,
   variantAttributeValues,
 } from "@/lib/db/schema";
 import { storageProvider } from "@/lib/storage";
@@ -85,6 +89,97 @@ export async function updateProductDetailsAction(
 
   revalidatePath(`/dashboard/${data.storeId}/products/${data.productId}`);
   revalidatePath(`/p/${owned.slug}`);
+  return { ok: true, message: "Saved." };
+}
+
+const classificationSchema = z.object({
+  storeId: z.uuid(),
+  productId: z.uuid(),
+  categoryId: z.uuid(),
+  brandId: z.uuid().nullable().optional(),
+  tagIds: z.array(z.uuid()).max(20).default([]),
+});
+
+/**
+ * Changes how a product is filed: its category, brand and tags.
+ *
+ * All three were set once at creation and then frozen. A seller who picked the
+ * wrong category had exactly one remedy — delete the product and start again —
+ * and once anything had been ordered even that was refused. Meanwhile the
+ * columns were plainly mutable; nothing but the absence of a form stopped them
+ * changing.
+ *
+ * Category matters more than the others: it decides which listing pages the
+ * product appears on and which filters reach it, so a mistake here makes the
+ * product effectively invisible.
+ */
+export async function updateProductClassificationAction(
+  input: z.input<typeof classificationSchema>,
+): Promise<EditorResult> {
+  const parsed = classificationSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0].message };
+  }
+  const data = parsed.data;
+
+  await requireStorePermission(data.storeId, "product.update");
+  const owned = await ownedProduct(data.productId, data.storeId);
+  if (!owned) return { ok: false, message: "Product not found." };
+
+  // Checked against the real tables rather than trusted. These ids arrive from
+  // a combobox that the client controls, and a brand id belonging to a pending
+  // proposal from another store must not be attachable here.
+  const [category] = await db
+    .select({ id: categories.id })
+    .from(categories)
+    .where(eq(categories.id, data.categoryId))
+    .limit(1);
+  if (!category) return { ok: false, message: "That category does not exist." };
+
+  if (data.brandId) {
+    const [brand] = await db
+      .select({ id: brands.id })
+      .from(brands)
+      .where(eq(brands.id, data.brandId))
+      .limit(1);
+    if (!brand) return { ok: false, message: "That brand does not exist." };
+  }
+
+  if (data.tagIds.length > 0) {
+    const found = await db
+      .select({ id: tags.id })
+      .from(tags)
+      .where(inArray(tags.id, data.tagIds));
+    if (found.length !== new Set(data.tagIds).size) {
+      return { ok: false, message: "One of those tags does not exist." };
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(products)
+      .set({ categoryId: data.categoryId, brandId: data.brandId ?? null })
+      .where(eq(products.id, data.productId));
+
+    // Replaced wholesale. The join table has no data of its own, so a diff
+    // would be more code for an identical result.
+    await tx
+      .delete(productTags)
+      .where(eq(productTags.productId, data.productId));
+    if (data.tagIds.length > 0) {
+      await tx
+        .insert(productTags)
+        .values(
+          data.tagIds.map((tagId) => ({ productId: data.productId, tagId })),
+        );
+    }
+  });
+
+  revalidatePath(`/dashboard/${data.storeId}/products/${data.productId}`);
+  revalidatePath(`/p/${owned.slug}`);
+  // The product moves between listing pages, and both the old and the new one
+  // are now wrong until they are rebuilt.
+  revalidatePath("/search");
   return { ok: true, message: "Saved." };
 }
 

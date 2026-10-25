@@ -1,8 +1,9 @@
 "use client";
 
-import { Loader2, Plus, Trash2, TriangleAlert, Wand2 } from "lucide-react";
+import { Loader2, Plus, Trash2, TriangleAlert, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { TermCombobox } from "@/components/dashboard/term-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,12 +16,14 @@ import {
   saveVariantsAction,
   setProductAttributesAction,
   setProductStatusAction,
+  updateProductClassificationAction,
   updateProductDetailsAction,
 } from "@/lib/actions/product-editor";
 import type {
   EditorAttribute,
   EditorVariant,
 } from "@/lib/catalog/product-editor";
+import type { Term } from "@/lib/catalog/terms";
 import { type EditorImage, ImageManager } from "./image-manager";
 
 type AvailableAttribute = {
@@ -66,6 +69,7 @@ const money = (cents: number) => (cents / 100).toFixed(2);
 export function ProductEditor({
   storeId,
   product,
+  categories,
   available,
   permissions,
 }: {
@@ -80,7 +84,15 @@ export function ProductEditor({
     attributes: EditorAttribute[];
     variants: EditorVariant[];
     images: EditorImage[];
+    categoryId: string;
+    brandId: string | null;
+    brandName: string | null;
+    brandSlug: string | null;
+    brandStatus: Term["status"] | null;
+    brandMergedIntoId: string | null;
+    tags: Term[];
   };
+  categories: { id: string; name: string }[];
   available: AvailableAttribute[];
   permissions: {
     manageVariants: boolean;
@@ -88,11 +100,21 @@ export function ProductEditor({
     archive: boolean;
     proposeAttribute: boolean;
     delete: boolean;
+    proposeBrand: boolean;
+    proposeTag: boolean;
   };
 }) {
   return (
     <div className="flex flex-col gap-6">
       <DetailsSection storeId={storeId} product={product} />
+
+      <ClassificationSection
+        storeId={storeId}
+        product={product}
+        categories={categories}
+        canProposeBrand={permissions.proposeBrand}
+        canProposeTag={permissions.proposeTag}
+      />
 
       <ImageManager
         storeId={storeId}
@@ -144,6 +166,190 @@ export function ProductEditor({
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Category, brand and tags.
+ *
+ * Separate from the details form above because these three are the only fields
+ * that change where the product appears rather than what it says. Getting the
+ * category wrong makes a listing effectively invisible — on no listing page
+ * and reachable by no filter — and until now the only fix was deleting the
+ * product, which is itself refused once anything has been ordered.
+ */
+function ClassificationSection({
+  storeId,
+  product,
+  categories,
+  canProposeBrand,
+  canProposeTag,
+}: {
+  storeId: string;
+  product: {
+    id: string;
+    categoryId: string;
+    brandId: string | null;
+    brandName: string | null;
+    brandSlug: string | null;
+    brandStatus: Term["status"] | null;
+    brandMergedIntoId: string | null;
+    tags: Term[];
+  };
+  categories: { id: string; name: string }[];
+  canProposeBrand: boolean;
+  canProposeTag: boolean;
+}) {
+  const [brand, setBrand] = useState<Term | null>(
+    product.brandId && product.brandName && product.brandSlug
+      ? {
+          id: product.brandId,
+          name: product.brandName,
+          slug: product.brandSlug,
+          status: product.brandStatus ?? "approved",
+          mergedIntoId: product.brandMergedIntoId,
+        }
+      : null,
+  );
+  const [selectedTags, setSelectedTags] = useState(product.tags);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <form
+      className="flex flex-col gap-4 rounded-md border border-border bg-surface-1 p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setError(null);
+        setMessage(null);
+        const data = new FormData(event.currentTarget);
+        startTransition(async () => {
+          const result = await updateProductClassificationAction({
+            storeId,
+            productId: product.id,
+            categoryId: String(data.get("categoryId") ?? ""),
+            brandId: brand?.id ?? null,
+            tagIds: selectedTags.map((tag) => tag.id),
+          });
+          if (!result.ok) {
+            setError(result.message);
+            return;
+          }
+          setMessage(result.message);
+        });
+      }}
+    >
+      <h2 className="font-medium text-sm">Filing</h2>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor="categoryId">Category</Label>
+        <select
+          id="categoryId"
+          name="categoryId"
+          defaultValue={product.categoryId}
+          className="h-11 rounded-control border border-border-strong bg-surface-sunken px-4 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25"
+        >
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+        <p className="text-tertiary-text text-xs">
+          Decides which listing pages show it and which filters reach it.
+        </p>
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label>Brand</Label>
+        {brand ? (
+          <div className="flex items-center gap-2">
+            <Badge variant="neutral">{brand.name}</Badge>
+            <button
+              type="button"
+              onClick={() => setBrand(null)}
+              className="text-tertiary-text text-xs hover:text-critical"
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+        {canProposeBrand ? (
+          <TermCombobox
+            kind="brand"
+            storeId={storeId}
+            value={brand}
+            onChange={setBrand}
+          />
+        ) : (
+          <p className="text-tertiary-text text-sm">
+            Your role cannot change the brand.
+          </p>
+        )}
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label>Tags</Label>
+        {selectedTags.length > 0 ? (
+          <ul className="flex flex-wrap gap-1.5">
+            {selectedTags.map((tag) => (
+              <li key={tag.id}>
+                <Badge variant="neutral">
+                  {tag.name}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${tag.name}`}
+                    onClick={() =>
+                      setSelectedTags((current) =>
+                        current.filter((entry) => entry.id !== tag.id),
+                      )
+                    }
+                    className="ml-1"
+                  >
+                    <X className="size-3" aria-hidden />
+                  </button>
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {canProposeTag ? (
+          <TermCombobox
+            kind="tag"
+            storeId={storeId}
+            value={null}
+            onChange={(tag) =>
+              setSelectedTags((current) =>
+                tag && !current.some((entry) => entry.id === tag.id)
+                  ? [...current, tag]
+                  : current,
+              )
+            }
+          />
+        ) : (
+          <p className="text-tertiary-text text-sm">
+            Your role cannot change tags.
+          </p>
+        )}
+      </div>
+
+      {error ? (
+        <p role="alert" className="text-critical text-sm">
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <output className="block text-positive text-sm">{message}</output>
+      ) : null}
+
+      <div>
+        <Button type="submit" size="sm" variant="outline" disabled={pending}>
+          {pending ? <Loader2 className="animate-spin" aria-hidden /> : null}
+          Save filing
+        </Button>
+      </div>
+    </form>
+  );
+}
 
 function DetailsSection({
   storeId,
