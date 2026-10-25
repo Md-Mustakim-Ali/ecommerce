@@ -34,6 +34,7 @@ export function ProductDetail({
   attributes,
   variants,
   title,
+  morphName,
   stockDisplay,
   lowStockThreshold,
   beforePrice,
@@ -44,6 +45,8 @@ export function ProductDetail({
   attributes: ProductAttribute[];
   variants: PickerVariant[];
   title: string;
+  /** Handed to the gallery so the hero morphs out of the card that was clicked. */
+  morphName?: string;
   stockDisplay?: "never" | "always" | "when_low";
   lowStockThreshold?: number;
   /**
@@ -109,6 +112,7 @@ export function ProductDetail({
         title={title}
         activeIndex={activeIndex}
         onActiveIndexChange={setActiveIndex}
+        morphName={morphName}
       />
       <div className="flex flex-col gap-5">
         {beforePrice}

@@ -231,23 +231,72 @@ html.dark {
 
 /* ---------------------------------------------------------------------------
    View transitions
-   Used by the theme toggle's circular reveal. The default cross-fade is
-   disabled so the clip-path animation is the only thing that reads.
+
+   Two different things share this API and want opposite behaviour from the
+   root snapshot, so both are scoped.
+
+   The theme toggle wants the default cross-fade gone, because the circular
+   clip-path reveal is the whole effect and a fade underneath it just makes the
+   old theme visible through the new one. It sets data-theme-transition for the
+   duration.
+
+   A navigation wants the cross-fade kept: it is what stops the page cutting
+   hard between two unrelated layouts while the product image travels.
+
+   Everything here is inside a reduced-motion guard. Under `reduce` the
+   transitions still run — the page still changes — they just do not animate.
 --------------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: no-preference) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
+  html[data-theme-transition]::view-transition-old(root),
+  html[data-theme-transition]::view-transition-new(root) {
     animation: none;
     mix-blend-mode: normal;
   }
 
-  ::view-transition-old(root) {
+  html[data-theme-transition]::view-transition-old(root) {
     z-index: 1;
   }
 
-  ::view-transition-new(root) {
+  html[data-theme-transition]::view-transition-new(root) {
     z-index: 2;
+  }
+
+  /*
+    The card-to-page morph.
+
+    Both snapshots are stretched to fill the transition group rather than
+    letter-boxed, so a square card image becoming a 4:5 hero grows into the
+    new shape instead of sliding a correctly-proportioned copy around inside
+    the wrong-shaped box. The cross-fade between them hides the crop change.
+
+    340ms on the same easing as the rest of the interface. Long enough to
+    follow, short enough that a shopper clicking through ten products in a row
+    never waits on it.
+  */
+  ::view-transition-group(*) {
+    animation-duration: 340ms;
+    animation-timing-function: var(--ease-out);
+  }
+
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+  }
+}
+
+/*
+  Under reduced motion the morph is skipped entirely rather than shortened.
+  A scaled, travelling image is exactly the kind of movement the setting is
+  asking not to see, and there is nothing lost by simply arriving.
+*/
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
   }
 }
 

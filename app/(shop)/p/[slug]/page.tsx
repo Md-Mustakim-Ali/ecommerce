@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/guards";
 import { getCategoryAncestry, getProductBySlug } from "@/lib/catalog/queries";
+import { productMorphName } from "@/lib/motion/transition-name";
 import {
   listReviewablePurchases,
   listReviewsForProduct,
@@ -141,6 +142,7 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
 
       <ProductDetail
         title={product.title}
+        morphName={productMorphName(product.slug)}
         stockDisplay={product.stockDisplay}
         lowStockThreshold={product.lowStockThreshold}
         images={product.images.map((image) => ({

@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
+import { ProductRows } from "@/components/dashboard/product-rows";
 import { Button } from "@/components/ui/button";
 import { requireStorePermission } from "@/lib/auth/access";
 import { listProductsForStore } from "@/lib/catalog/product-editor";
@@ -141,57 +141,22 @@ export default async function StoreProductsPage({
           ) : null}
         </div>
       ) : (
-        <ul className="flex flex-col gap-px overflow-hidden rounded-md bg-border">
-          {rows.map((row) => {
-            const badge = STATUS_BADGE[row.status];
-            const priceRange =
-              row.minPriceCents === row.maxPriceCents
-                ? formatMoney(row.minPriceCents, "USD")
-                : `${formatMoney(row.minPriceCents, "USD")} – ${formatMoney(row.maxPriceCents, "USD")}`;
-
-            return (
-              <li key={row.id}>
-                <Link
-                  href={
-                    canEdit
-                      ? `/dashboard/${storeId}/products/${row.id}`
-                      : `/p/${row.slug}`
-                  }
-                  className="flex items-center gap-4 bg-surface-1 px-4 py-3 hover:bg-surface-2"
-                >
-                  {row.imageUrl ? (
-                    <Image
-                      src={row.imageUrl}
-                      alt=""
-                      width={44}
-                      height={44}
-                      className="size-11 shrink-0 rounded-md object-cover"
-                    />
-                  ) : (
-                    <span className="size-11 shrink-0 rounded-md bg-surface-3" />
-                  )}
-
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate font-medium text-sm">
-                      {row.title}
-                    </span>
-                    <span className="truncate text-secondary-text text-xs">
-                      {row.brandName ? `${row.brandName} · ` : ""}
-                      {row.variantCount}{" "}
-                      {row.variantCount === 1 ? "variant" : "variants"} ·{" "}
-                      {row.stock} in stock
-                    </span>
-                  </div>
-
-                  <span className="tabular hidden shrink-0 text-sm sm:block">
-                    {priceRange}
-                  </span>
-                  <Badge variant={badge.variant}>{badge.label}</Badge>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <ProductRows
+          storeId={storeId}
+          rows={rows.map((row) => ({
+            id: row.id,
+            slug: row.slug,
+            title: row.title,
+            status: row.status,
+            brandName: row.brandName,
+            imageUrl: row.imageUrl,
+            variantCount: row.variantCount,
+            stock: row.stock,
+            minPriceCents: row.minPriceCents,
+            maxPriceCents: row.maxPriceCents,
+          }))}
+          canEdit={canEdit}
+        />
       )}
     </div>
   );

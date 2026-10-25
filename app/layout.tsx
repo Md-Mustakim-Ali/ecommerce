@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Manrope } from "next/font/google";
+import { NavTransitionSettler } from "@/components/motion/morph-link";
 import { themeClass } from "@/lib/theme";
 import { getTheme } from "@/lib/theme.server";
 import "./globals.css";
@@ -45,6 +46,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${manrope.variable} ${jetbrainsMono.variable} ${themeClass(theme)}`}
     >
       <body className="min-h-dvh bg-surface-0 font-sans text-primary-text">
+        {/*
+          Reports a finished navigation to whatever view transition started it.
+          It has to live above every page, because the link that begins a
+          navigation is the first thing that navigation unmounts.
+        */}
+        <NavTransitionSettler />
         {children}
       </body>
     </html>

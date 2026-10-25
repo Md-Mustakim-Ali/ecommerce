@@ -24,12 +24,18 @@ export function ProductGallery({
   title,
   activeIndex,
   onActiveIndexChange,
+  morphName,
 }: {
   images: GalleryImage[];
   title: string;
   /** Controlled from outside so the option picker can steer the gallery. */
   activeIndex?: number;
   onActiveIndexChange?: (index: number) => void;
+  /**
+   * The name the grid card handed over, so the first slide morphs out of the
+   * card the shopper clicked instead of the page simply replacing it.
+   */
+  morphName?: string;
 }) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
@@ -66,13 +72,25 @@ export function ProductGallery({
     return <div className="aspect-[4/5] w-full rounded-xl bg-surface-sunken" />;
   }
 
+  // Only while the first slide is showing. Once the shopper has swiped, the
+  // element under the name is no longer the photo they arrived on, and a Back
+  // navigation would morph the wrong image into the card.
+  const heroName = selected === 0 ? morphName : undefined;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="overflow-hidden rounded-xl" ref={emblaRef}>
         <div className="flex touch-pan-y">
           {images.map((image, index) => (
             <div key={image.id} className="relative min-w-0 flex-[0_0_100%]">
-              <div className="relative aspect-[4/5] bg-surface-sunken">
+              <div
+                className="relative aspect-[4/5] bg-surface-sunken"
+                style={
+                  index === 0 && heroName
+                    ? { viewTransitionName: heroName }
+                    : undefined
+                }
+              >
                 <Image
                   src={image.url}
                   alt={image.alt ?? `${title} — image ${index + 1}`}

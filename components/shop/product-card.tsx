@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { MorphLink } from "@/components/motion/morph-link";
 import { PointerSurface } from "@/components/motion/pointer-surface";
 import { QuickAdd } from "@/components/shop/quick-add";
 import { QuickView } from "@/components/shop/quick-view";
@@ -9,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import type { ProductListItem } from "@/lib/catalog/queries";
 import { cardStockMessage } from "@/lib/catalog/stock";
 import { formatMoney } from "@/lib/money/format";
+import { productMorphName } from "@/lib/motion/transition-name";
 import { cn } from "@/lib/utils";
 
 /**
@@ -61,15 +63,20 @@ export function ProductCard({
     <PointerSurface className={cn("group rounded-xl", className)}>
       <div className="flex h-full flex-col gap-3 rounded-xl bg-surface-1 p-3 shadow-e1">
         <div className="relative">
-          <Link
+          <MorphLink
             href={`/p/${product.slug}`}
+            name={productMorphName(product.slug)}
             prefetch
             className={cn(
               "block overflow-hidden rounded-lg outline-none",
               "focus-visible:ring-3 focus-visible:ring-ring/40",
             )}
           >
-            <div className="parallax relative aspect-square overflow-hidden rounded-lg bg-surface-sunken">
+            {/* data-morph is what MorphLink names when this card is clicked. */}
+            <div
+              data-morph
+              className="parallax relative aspect-square overflow-hidden rounded-lg bg-surface-sunken"
+            >
               {product.imageUrl ? (
                 <Image
                   src={product.imageUrl}
@@ -88,7 +95,7 @@ export function ProductCard({
                 <div className="absolute inset-0 bg-surface-2" />
               )}
             </div>
-          </Link>
+          </MorphLink>
 
           {/* Status, top-left. */}
           {soldOut || onSale || lowStock ? (

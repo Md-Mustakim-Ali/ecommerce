@@ -78,9 +78,18 @@ export function ThemeToggle({
       Math.max(y, window.innerHeight - y),
     );
 
-    document
-      .startViewTransition(() => commit(next))
-      .ready.then(() => {
+    // Marks this transition as the theme's, so the CSS that suppresses the
+    // root cross-fade applies here and not to a page navigation — which needs
+    // the cross-fade, and would otherwise cut hard between two pages.
+    document.documentElement.dataset.themeTransition = "";
+
+    const transition = document.startViewTransition(() => commit(next));
+    transition.finished.finally(() => {
+      delete document.documentElement.dataset.themeTransition;
+    });
+
+    transition.ready
+      .then(() => {
         document.documentElement.animate(
           {
             clipPath: [
