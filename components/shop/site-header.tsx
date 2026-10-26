@@ -3,6 +3,7 @@
 import { Menu, Search, ShoppingBag, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AccountMenu, type MenuStore } from "@/components/account-menu";
 import { CartDrawer } from "@/components/shop/cart-drawer";
 import { useCart } from "@/components/shop/cart-provider";
 import { CategoryDrawer } from "@/components/shop/category-drawer";
@@ -26,12 +27,19 @@ import type { Theme } from "@/lib/theme";
 export function SiteHeader({
   tree,
   theme,
-  signedIn,
+  account,
 }: {
   tree: CategoryNode[];
   theme: Theme;
-  signedIn: boolean;
+  /** Null when signed out, which is the only difference in this header. */
+  account: {
+    name: string;
+    email: string;
+    stores: MenuStore[];
+    isStaff: boolean;
+  } | null;
 }) {
+  const signedIn = account !== null;
   const { count, setOpen } = useCart();
   const router = useRouter();
   const params = useSearchParams();
@@ -85,15 +93,32 @@ export function SiteHeader({
         <div className="ml-auto flex items-center gap-1 md:ml-0">
           <ThemeToggle value={theme} className="hidden sm:inline-flex" />
 
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={signedIn ? "Your account" : "Sign in"}
-            render={<Link href={signedIn ? "/account" : "/sign-in"} />}
-            className="hidden md:inline-flex"
-          >
-            <User />
-          </Button>
+          {/*
+            A menu rather than a link, because the useful destinations differ
+            per person: a seller wants their store, an admin wants the panel,
+            and everyone needs a way to sign out. Sending all of them to one
+            page and making them find it again is a step nobody needs.
+          */}
+          {account ? (
+            <AccountMenu
+              name={account.name}
+              email={account.email}
+              stores={account.stores}
+              isStaff={account.isStaff}
+              current={{ kind: "shop" }}
+              className="hidden md:block"
+            />
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Sign in"
+              render={<Link href="/sign-in" />}
+              className="hidden md:inline-flex"
+            >
+              <User />
+            </Button>
+          )}
 
           <CartDrawer
             trigger={

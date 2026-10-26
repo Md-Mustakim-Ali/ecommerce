@@ -1,132 +1,279 @@
-import { Heart, LayoutDashboard, MapPin, Package, Shield } from "lucide-react";
+import { eq, sql } from "drizzle-orm";
+import {
+  ArrowRight,
+  Heart,
+  LayoutDashboard,
+  MapPin,
+  Package,
+  Shield,
+} from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getPlatformAccess, getUserStores } from "@/lib/auth/access";
 import { requireUser } from "@/lib/auth/guards";
-import { getTheme } from "@/lib/theme.server";
+import { db } from "@/lib/db";
+import { savedItems } from "@/lib/db/schema";
+import { formatMoney } from "@/lib/money/format";
+import { listOrdersForBuyer } from "@/lib/orders/queries";
 import { SignOutButton } from "./sign-out-button";
 
+export const metadata: Metadata = { title: "Your profile" };
+
+const ORDER_BADGE: Record<
+  string,
+  "default" | "muted" | "neutral" | "positive" | "critical"
+> = {
+  pending: "neutral",
+  paid: "positive",
+  partially_fulfilled: "muted",
+  fulfilled: "positive",
+  cancelled: "critical",
+  refunded: "critical",
+};
+
 /**
- * The signed-in person's home.
+ * The signed-in person's profile.
  *
- * Its main job is getting somebody to the surface they actually came for.
- * Landing here with no route onward to the admin panel or a store dashboard is
- * a dead end, and it is not obvious from the URL that either exists.
+ * Previously a narrow centred card that read as a modal: a name, an email and
+ * four links, vertically centred in an empty viewport. It looked like a
+ * placeholder because it behaved like one — nothing about the account was
+ * actually on it, and every real answer ("where is my order?") was one more
+ * click away behind a link that did not say.
+ *
+ * Now it answers the question people come here with. Recent orders are on the
+ * page, with their status and total, because that is what an account page is
+ * for on a shop. Everything else is secondary and sits beside it.
  */
 export default async function AccountPage() {
-  const [user, theme, stores, platform] = await Promise.all([
-    requireUser(),
-    getTheme(),
+  const user = await requireUser();
+
+  const [orders, stores, platform, saved] = await Promise.all([
+    listOrdersForBuyer(user.id),
     getUserStores(),
     getPlatformAccess(),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(savedItems)
+      .where(eq(savedItems.userId, user.id)),
   ]);
 
   const isStaff = (platform?.permissions.size ?? 0) > 0;
+  const savedCount = saved[0]?.count ?? 0;
+  const recent = orders.slice(0, 5);
+
+  // Lifetime, from what the buyer actually paid. Cancelled and refunded orders
+  // are excluded: counting money that came back would be a number nobody
+  // recognises.
+  const spent = orders
+    .filter(
+      (order) => order.status !== "cancelled" && order.status !== "refunded",
+    )
+    .reduce((sum, order) => sum + order.totalCents, 0);
+
+  const initials =
+    user.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || user.email[0]?.toUpperCase();
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 p-6">
-      <div className="flex flex-col gap-5 rounded-xl border border-border bg-surface-1 p-6 shadow-e2">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="font-semibold text-2xl tracking-tight">Account</h1>
-          <ThemeToggle value={theme} />
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6">
+      <header className="flex flex-wrap items-center gap-4">
+        <span
+          aria-hidden
+          className="grid size-14 shrink-0 place-items-center rounded-full bg-surface-2 font-semibold text-lg"
+        >
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-semibold text-2xl tracking-tight">
+            {user.name}
+          </h1>
+          <p className="truncate text-secondary-text text-sm">{user.email}</p>
         </div>
-
-        <Separator />
-
-        <dl className="flex flex-col gap-3 text-sm">
-          <div className="flex items-center justify-between gap-4">
-            <dt className="text-secondary-text">Name</dt>
-            <dd>{user.name}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <dt className="text-secondary-text">Email</dt>
-            <dd className="truncate">{user.email}</dd>
-          </div>
-        </dl>
-
-        <Separator />
-
-        <nav className="flex flex-col gap-2">
-          <Link
-            href="/account/orders"
-            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm hover:bg-surface-2"
-          >
-            <Package aria-hidden className="size-4 text-secondary-text" />
-            Your orders
-          </Link>
-
-          <Link
-            href="/account/saved"
-            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm hover:bg-surface-2"
-          >
-            <Heart aria-hidden className="size-4 text-secondary-text" />
-            Saved items
-          </Link>
-
-          <Link
-            href="/account/addresses"
-            className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm hover:bg-surface-2"
-          >
-            <MapPin aria-hidden className="size-4 text-secondary-text" />
-            Addresses
-          </Link>
-
-          {stores.length > 0 ? (
-            <Link
-              href={
-                stores.length === 1
-                  ? `/dashboard/${stores[0].id}`
-                  : "/dashboard"
-              }
-              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm hover:bg-surface-2"
-            >
-              <LayoutDashboard
-                aria-hidden
-                className="size-4 text-secondary-text"
-              />
-              <span className="min-w-0 flex-1">
-                Seller dashboard
-                <span className="block truncate text-tertiary-text text-xs">
-                  {stores.length === 1
-                    ? stores[0].name
-                    : `${stores.length} stores`}
-                </span>
-              </span>
-            </Link>
-          ) : null}
-
-          {isStaff ? (
-            <Link
-              href="/admin"
-              className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-sm hover:bg-surface-2"
-            >
-              <Shield aria-hidden className="size-4 text-secondary-text" />
-              Admin panel
-            </Link>
-          ) : null}
-        </nav>
-
-        {/*
-          No "Not verified" badge. Transactional email is not wired up yet, so
-          nothing can ever verify an address — showing an unverified state that
-          the product gives you no way to resolve reads as a problem with the
-          account rather than a feature that has not been built.
-        */}
-        <p className="text-tertiary-text text-xs">
-          Email delivery is not configured yet, so no receipts or verification
-          messages are sent.
-        </p>
-
         <SignOutButton />
-      </div>
+      </header>
 
-      <Link
-        href="/"
-        className="text-center text-secondary-text text-sm underline underline-offset-4"
-      >
-        Back to store
-      </Link>
-    </main>
+      {/*
+        Three numbers rather than a wall of them. Orders, spend and saved items
+        are the only facts a shopper recognises about their own account.
+      */}
+      <dl className="grid gap-px overflow-hidden rounded-xl bg-border sm:grid-cols-3">
+        <Stat label="Orders" value={String(orders.length)} />
+        <Stat label="Spent" value={formatMoney(spent, "USD")} />
+        <Stat label="Saved" value={String(savedCount)} />
+      </dl>
+
+      <div className="grid gap-8 lg:grid-cols-[1fr_18rem]">
+        <section className="flex flex-col gap-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="font-medium text-sm">Recent orders</h2>
+            {orders.length > recent.length ? (
+              <Link
+                href="/account/orders"
+                className="inline-flex items-center gap-1 text-accent-text text-sm underline-offset-4 hover:underline"
+              >
+                All {orders.length}
+                <ArrowRight aria-hidden className="size-3.5" />
+              </Link>
+            ) : null}
+          </div>
+
+          {recent.length === 0 ? (
+            <div className="flex flex-col items-start gap-3 rounded-xl border border-border border-dashed px-5 py-8">
+              <p className="text-secondary-text text-sm">
+                Nothing ordered yet. When you do, it shows up here with its
+                status and tracking.
+              </p>
+              <Button size="sm" render={<Link href="/search" />}>
+                Start browsing
+              </Button>
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-px overflow-hidden rounded-xl bg-border">
+              {recent.map((order) => (
+                <li key={order.id}>
+                  <Link
+                    href={`/orders/${order.id}`}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-surface-1 px-4 py-3.5 transition-colors hover:bg-surface-2"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono font-medium text-sm">
+                        {order.orderNumber}
+                      </span>
+                      <span className="block text-tertiary-text text-xs">
+                        {order.placedAt
+                          ? order.placedAt.toLocaleDateString(undefined, {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : "Not placed"}
+                      </span>
+                    </span>
+                    <span className="tabular shrink-0 font-medium text-sm">
+                      {formatMoney(order.totalCents, order.currency)}
+                    </span>
+                    <Badge variant={ORDER_BADGE[order.status] ?? "neutral"}>
+                      {order.status.replace(/_/g, " ")}
+                    </Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <aside className="flex flex-col gap-4">
+          <h2 className="font-medium text-sm">Shortcuts</h2>
+
+          <nav className="flex flex-col gap-2">
+            <Shortcut
+              href="/account/orders"
+              icon={Package}
+              label="Order history"
+              hint={`${orders.length} ${orders.length === 1 ? "order" : "orders"}`}
+            />
+            <Shortcut
+              href="/account/saved"
+              icon={Heart}
+              label="Saved items"
+              hint={`${savedCount} saved`}
+            />
+            <Shortcut
+              href="/account/addresses"
+              icon={MapPin}
+              label="Addresses"
+              hint="For checkout"
+            />
+          </nav>
+
+          {stores.length > 0 || isStaff ? (
+            <>
+              <Separator />
+              <h2 className="font-medium text-sm">Managing</h2>
+              <nav className="flex flex-col gap-2">
+                {/*
+                  Every store, not just the first. Someone with access to more
+                  than one had no way to pick between them from here.
+                */}
+                {stores.map((store) => (
+                  <Shortcut
+                    key={store.id}
+                    href={`/dashboard/${store.id}`}
+                    icon={LayoutDashboard}
+                    label={store.name}
+                    hint="Seller dashboard"
+                  />
+                ))}
+                {isStaff ? (
+                  <Shortcut
+                    href="/admin"
+                    icon={Shield}
+                    label="Admin panel"
+                    hint="Platform staff"
+                  />
+                ) : null}
+              </nav>
+            </>
+          ) : null}
+
+          {/*
+            No "unverified" badge. Transactional email is configurable but not
+            configured here, so showing a state nobody can resolve reads as a
+            problem with the account rather than with the deployment.
+          */}
+          <p className="text-tertiary-text text-xs leading-relaxed">
+            Email delivery is not configured in this environment, so no receipts
+            or verification messages are sent.
+          </p>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 bg-surface-1 px-5 py-4">
+      <dt className="text-secondary-text text-xs">{label}</dt>
+      <dd className="tabular font-semibold text-xl">{value}</dd>
+    </div>
+  );
+}
+
+function Shortcut({
+  href,
+  icon: Icon,
+  label,
+  hint,
+}: {
+  href: string;
+  icon: typeof Package;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 transition-colors hover:bg-surface-2"
+    >
+      <Icon aria-hidden className="size-4 shrink-0 text-secondary-text" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm">{label}</span>
+        <span className="block truncate text-tertiary-text text-xs">
+          {hint}
+        </span>
+      </span>
+      <ArrowRight
+        aria-hidden
+        className="size-3.5 shrink-0 text-tertiary-text"
+      />
+    </Link>
   );
 }

@@ -133,16 +133,19 @@ export function ProductGrid({
  * with a headline over three lines and nothing else. Two columns is one card's
  * height and reads at a glance.
  *
- * Centred vertically rather than stretched. The row is as tall as a product
- * card, and a banner pulled to that height would shout; sitting in the middle
- * of the band it reads as one item among the products, which is what it is.
+ * Top-aligned, not centred. The row is as tall as a product card and the offer
+ * is much shorter, so the leftover space has to go somewhere: centring splits
+ * it above and below and the block looks like it is floating in a hole, while
+ * aligning to the top lines its edge up with the neighbouring cards and puts
+ * all the slack in one place, below, where it reads as an empty cell rather
+ * than a mistake.
  *
  * Attributed, like every other placement: a buyer seeing "free delivery" needs
  * to know whether the marketplace or one seller is promising it.
  */
 function GridOffer({ placement }: { placement: ResolvedPlacement }) {
   return (
-    <div className="col-span-2 flex flex-col justify-center gap-1.5">
+    <div className="col-span-2 flex flex-col gap-1.5">
       <p className="flex items-center gap-1.5 text-tertiary-text text-xs">
         {placement.scope === "platform" ? (
           <>

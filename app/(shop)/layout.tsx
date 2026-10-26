@@ -1,6 +1,7 @@
 import { BottomBar } from "@/components/shop/bottom-bar";
 import { CartProvider } from "@/components/shop/cart-provider";
 import { SiteHeader } from "@/components/shop/site-header";
+import { getPlatformAccess, getUserStores } from "@/lib/auth/access";
 import { getSession } from "@/lib/auth/guards";
 import { getCart } from "@/lib/cart";
 import { getCategoryTree } from "@/lib/catalog/queries";
@@ -17,17 +18,32 @@ import { getTheme } from "@/lib/theme.server";
  * last row of any list sits underneath it and looks like a rendering bug.
  */
 export default async function ShopLayout({ children }: LayoutProps<"/">) {
-  const [tree, theme, session, cart] = await Promise.all([
+  const [tree, theme, session, cart, stores, platform] = await Promise.all([
     getCategoryTree(),
     getTheme(),
     getSession(),
     getCart(),
+    getUserStores(),
+    getPlatformAccess(),
   ]);
 
   return (
     <CartProvider initialCount={cart.itemCount}>
       <div className="flex min-h-dvh flex-col">
-        <SiteHeader tree={tree} theme={theme} signedIn={Boolean(session)} />
+        <SiteHeader
+          tree={tree}
+          theme={theme}
+          account={
+            session
+              ? {
+                  name: session.user.name,
+                  email: session.user.email,
+                  stores,
+                  isStaff: (platform?.permissions.size ?? 0) > 0,
+                }
+              : null
+          }
+        />
 
         <main className="flex-1 pb-24 md:pb-12">{children}</main>
 

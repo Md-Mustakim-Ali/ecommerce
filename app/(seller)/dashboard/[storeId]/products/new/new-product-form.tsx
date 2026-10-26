@@ -85,7 +85,19 @@ export function NewProductForm({
       className="flex max-w-2xl flex-col gap-6"
       noValidate
     >
-      <div className="flex flex-col gap-4 rounded-md border border-border bg-surface-1 p-5">
+      {/*
+        The section names and their order match the product editor: Details,
+        then Filing, then the variant. Creating and editing the same thing
+        through two differently-shaped forms makes them feel like two different
+        objects, and the second one always looks like the real one.
+
+        What create cannot mirror is images, options and the variant matrix.
+        All three attach to a product id, and there is no id until this form is
+        submitted — so create is deliberately the shortest path to a row, and
+        it hands straight over to the editor, which is a superset of this.
+      */}
+      <section className="flex flex-col gap-4 rounded-md border border-border bg-surface-1 p-5">
+        <h2 className="font-medium text-sm">Details</h2>
         <div className="grid gap-2">
           <Label htmlFor="title">Title</Label>
           <Input id="title" name="title" required maxLength={140} />
@@ -101,6 +113,10 @@ export function NewProductForm({
             className="w-full rounded-md border border-border-strong bg-surface-sunken px-4 py-3 text-sm shadow-well outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25"
           />
         </div>
+      </section>
+
+      <section className="flex flex-col gap-5 rounded-md border border-border bg-surface-1 p-5">
+        <h2 className="font-medium text-sm">Filing</h2>
 
         <div className="grid gap-2">
           <Label htmlFor="categoryId">Category</Label>
@@ -121,9 +137,8 @@ export function NewProductForm({
             ))}
           </select>
         </div>
-      </div>
+        <Separator />
 
-      <div className="flex flex-col gap-5 rounded-md border border-border bg-surface-1 p-5">
         <div className="grid gap-2">
           <Label>Brand</Label>
           <p className="text-secondary-text text-xs">
@@ -184,36 +199,45 @@ export function NewProductForm({
             </p>
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="grid gap-4 rounded-md border border-border bg-surface-1 p-5 sm:grid-cols-3">
-        <div className="grid gap-2">
-          <Label htmlFor="sku">SKU</Label>
-          <Input id="sku" name="sku" required maxLength={64} />
+      <section className="flex flex-col gap-4 rounded-md border border-border bg-surface-1 p-5">
+        <div>
+          <h2 className="font-medium text-sm">First variant</h2>
+          <p className="text-secondary-text text-xs">
+            One to start with. Add options and the rest of the matrix in the
+            editor once this exists.
+          </p>
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor="price">Price</Label>
-          <Input
-            id="price"
-            name="price"
-            required
-            inputMode="decimal"
-            placeholder="19.99"
-            className="tabular"
-          />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-2">
+            <Label htmlFor="sku">SKU</Label>
+            <Input id="sku" name="sku" required maxLength={64} />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="price">Price</Label>
+            <Input
+              id="price"
+              name="price"
+              required
+              inputMode="decimal"
+              placeholder="19.99"
+              className="tabular"
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="stock">Stock</Label>
+            <Input
+              id="stock"
+              name="stock"
+              required
+              inputMode="numeric"
+              defaultValue="0"
+              className="tabular"
+            />
+          </div>
         </div>
-        <div className="grid gap-2">
-          <Label htmlFor="stock">Stock</Label>
-          <Input
-            id="stock"
-            name="stock"
-            required
-            inputMode="numeric"
-            defaultValue="0"
-            className="tabular"
-          />
-        </div>
-      </div>
+      </section>
 
       {error ? (
         <p role="alert" className="text-critical text-sm">

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AccountMenu } from "@/components/account-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getPlatformAccess } from "@/lib/auth/access";
+import { getPlatformAccess, getUserStores } from "@/lib/auth/access";
+import { requireUser } from "@/lib/auth/guards";
 import type { PlatformPermission } from "@/lib/auth/permissions";
 import { getTheme } from "@/lib/theme.server";
 
@@ -90,7 +92,12 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
 ];
 
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
-  const [access, theme] = await Promise.all([getPlatformAccess(), getTheme()]);
+  const [access, theme, user, stores] = await Promise.all([
+    getPlatformAccess(),
+    getTheme(),
+    requireUser(),
+    getUserStores(),
+  ]);
 
   // A buyer or seller should not be able to tell that /admin exists at all.
   if (!access || access.permissions.size === 0) notFound();
@@ -121,7 +128,21 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
               ))}
             </nav>
           </div>
-          <ThemeToggle value={theme} />
+          {/*
+            The way out. This shell offered no sign-out and no link back to the
+            storefront, so an admin session could only be ended by editing the
+            URL — which on a shared machine is how sessions get left open.
+          */}
+          <div className="flex items-center gap-2">
+            <ThemeToggle value={theme} />
+            <AccountMenu
+              name={user.name}
+              email={user.email}
+              stores={stores}
+              isStaff
+              current={{ kind: "admin" }}
+            />
+          </div>
         </div>
       </header>
 
