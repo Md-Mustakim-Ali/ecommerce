@@ -67,6 +67,9 @@ treat a hit on one of those four as "not audited" rather than "not built".
 | Add content to a page (blocks) | `page_blocks` | **done** — the eight block types now have an editor; pages used to be created empty and stay empty |
 | See your refund requests and their outcome | `refund_requests` | **done** — on the payouts page, with the reviewer's note |
 | Change a product's category, brand or tags after creating it | `products.category_id`, `products.brand_id`, `product_tags` | **done** — all three were set once at creation and frozen |
+| Edit a discount code after creating it | `discount_codes` | **done** — everything but the code itself, which redemptions point at |
+| Edit a banner or offer after creating it | `placements` | **done** — previously delete-and-rebuild, losing the schedule and targeting |
+| Author every field a placement block supports | `placements.data` | **done** — the form covered two of four types and silently dropped fields it did not render |
 
 ## Platform / admin
 

@@ -91,6 +91,37 @@ function toInt(value: string | undefined): number | null {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
+/**
+ * `value` means a different thing per kind, so it is parsed per kind.
+ *
+ * Shared by create and update rather than written twice — two copies of a
+ * money parser is two places for a rounding rule to drift apart.
+ */
+function parseValue(data: z.output<typeof codeSchema>): {
+  value: number;
+  error?: string;
+} {
+  if (data.kind === "percentage") {
+    const percent = Number(data.value);
+    if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+      return { value: 0, error: "Enter a percentage between 0 and 100." };
+    }
+    // Basis points, so 12.5% is exact rather than a rounded float.
+    return { value: Math.round(percent * 100) };
+  }
+
+  if (data.kind === "fixed_amount") {
+    const cents = toCents(data.value);
+    if (cents === null || cents <= 0) {
+      return { value: 0, error: "Enter an amount like 10.00." };
+    }
+    return { value: cents };
+  }
+
+  // free_shipping carries no value of its own.
+  return { value: 0 };
+}
+
 export async function createDiscountAction(
   input: Scope & z.input<typeof codeSchema>,
 ): Promise<DiscountResult> {
@@ -124,22 +155,9 @@ export async function createDiscountAction(
     return { ok: false, message: `${code} is already in use.` };
   }
 
-  // `value` means different things per kind, so it is parsed per kind.
-  let value = 0;
-  if (data.kind === "percentage") {
-    const percent = Number(data.value);
-    if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
-      return { ok: false, message: "Enter a percentage between 0 and 100." };
-    }
-    // Basis points, so 12.5% is exact rather than a rounded float.
-    value = Math.round(percent * 100);
-  } else if (data.kind === "fixed_amount") {
-    const cents = toCents(data.value);
-    if (cents === null || cents <= 0) {
-      return { ok: false, message: "Enter an amount like 10.00." };
-    }
-    value = cents;
-  }
+  const parsedValue = parseValue(data);
+  if (parsedValue.error) return { ok: false, message: parsedValue.error };
+  const value = parsedValue.value;
 
   const starts = data.startsAt ? new Date(data.startsAt) : null;
   const ends = data.endsAt ? new Date(data.endsAt) : null;
@@ -194,6 +212,111 @@ export async function createDiscountAction(
     ok: true,
     message: data.publish ? `${code} is live.` : `${code} saved as a draft.`,
   };
+}
+
+/**
+ * Edits a discount code's terms.
+ *
+ * Everything except the code itself. The code is what a buyer typed and what a
+ * redemption row points at, so renaming it would silently invalidate anything
+ * already circulating — a printed card, an email, a post — while leaving the
+ * redemptions attached to a name nobody can use again.
+ *
+ * Editing the value of a code that has already been redeemed does not rewrite
+ * those redemptions: each one recorded the amount it actually gave at the time,
+ * for exactly this reason. Past orders keep the discount they were given.
+ */
+export async function updateDiscountAction(
+  input: Scope & { discountId: string } & z.input<typeof codeSchema>,
+): Promise<DiscountResult> {
+  const scope = scopeSchema.safeParse(input);
+  if (!scope.success) return { ok: false, message: "Invalid scope." };
+
+  const discountId = z.uuid().safeParse(input.discountId);
+  if (!discountId.success) return { ok: false, message: "Invalid request." };
+
+  const parsed = codeSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0].message };
+  }
+  const data = parsed.data;
+
+  let actor: { id: string; email: string };
+  try {
+    actor = await authorise(scope.data);
+  } catch (error) {
+    return { ok: false, message: (error as Error).message };
+  }
+
+  // Scoped, so a discount id belonging to the platform or another store does
+  // not resolve however valid the uuid is.
+  const [existing] = await db
+    .select({
+      id: discountCodes.id,
+      code: discountCodes.code,
+      kind: discountCodes.kind,
+      value: discountCodes.value,
+    })
+    .from(discountCodes)
+    .where(
+      and(
+        eq(discountCodes.id, discountId.data),
+        scope.data.scope === "store"
+          ? eq(discountCodes.storeId, scope.data.storeId)
+          : isNull(discountCodes.storeId),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) return { ok: false, message: "Code not found." };
+
+  const { value, error } = parseValue(data);
+  if (error) return { ok: false, message: error };
+
+  const starts = data.startsAt ? new Date(data.startsAt) : null;
+  const ends = data.endsAt ? new Date(data.endsAt) : null;
+  if (starts && ends && ends <= starts) {
+    return { ok: false, message: "The end must come after the start." };
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(discountCodes)
+      .set({
+        kind: data.kind,
+        value,
+        maxDiscountCents:
+          data.kind === "percentage" ? toCents(data.maxDiscount) : null,
+        minSubtotalCents: toCents(data.minSubtotal) ?? 0,
+        maxRedemptions: toInt(data.maxRedemptions),
+        perCustomerLimit: toInt(data.perCustomerLimit),
+        description: data.description || null,
+      })
+      .where(eq(discountCodes.id, discountId.data));
+
+    // Audited with the before value. Changing what a live code is worth is a
+    // change to what the marketplace is promising, and "who moved this from
+    // 10% to 40%" has to be answerable.
+    await tx.insert(auditLog).values({
+      storeId: scope.data.scope === "store" ? scope.data.storeId : null,
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: "discount.update",
+      targetType: "discount_code",
+      targetId: existing.id,
+      targetLabel: existing.code,
+      before: { kind: existing.kind, value: existing.value },
+      after: { kind: data.kind, value },
+    });
+  });
+
+  revalidatePath(
+    scope.data.scope === "store"
+      ? `/dashboard/${scope.data.storeId}/discounts`
+      : "/admin/discounts",
+  );
+
+  return { ok: true, message: `${existing.code} updated.` };
 }
 
 const statusSchema = z.object({

@@ -6,7 +6,6 @@ import { z } from "zod";
 import { requireStorePermission } from "@/lib/auth/access";
 import { db } from "@/lib/db";
 import {
-  attributeValues,
   productAttributeValues,
   productImageAttributeValues,
   productImages,

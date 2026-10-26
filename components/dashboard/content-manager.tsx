@@ -17,8 +17,14 @@ import {
   setPagePublishedAction,
   setPlacementStatusAction,
   updatePageAction,
+  updatePlacementAction,
 } from "@/lib/actions/content";
-import { PLACEMENT_BLOCK_TYPES } from "@/lib/content/blocks";
+import {
+  BLOCK_LABELS,
+  type BlockType,
+  PLACEMENT_BLOCK_TYPES,
+} from "@/lib/content/blocks";
+import { BlockFields, readBlockForm } from "./page-editor";
 
 /**
  * Pages and placements, for a store owner or platform staff.
@@ -91,6 +97,7 @@ export function ContentManager({
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [editingPlacement, setEditingPlacement] = useState<string | null>(null);
 
   function run(work: () => Promise<{ ok: boolean; message: string }>) {
     startTransition(async () => {
@@ -271,6 +278,21 @@ export function ContentManager({
                       {placement.status === "published" ? "Pause" : "Go live"}
                     </Button>
                     <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending}
+                      onClick={() =>
+                        setEditingPlacement(
+                          editingPlacement === placement.id
+                            ? null
+                            : placement.id,
+                        )
+                      }
+                    >
+                      <Pencil aria-hidden />
+                      Edit
+                    </Button>
+                    <Button
                       size="icon-sm"
                       variant="ghost"
                       aria-label="Delete placement"
@@ -288,6 +310,18 @@ export function ContentManager({
                     </Button>
                   </div>
                 </div>
+
+                {editingPlacement === placement.id ? (
+                  <PlacementForm
+                    scope={scope}
+                    placement={placement}
+                    onDone={() => {
+                      setEditingPlacement(null);
+                      router.refresh();
+                    }}
+                    onCancel={() => setEditingPlacement(null)}
+                  />
+                ) : null}
 
                 <ul className="flex flex-wrap gap-1.5">
                   {placement.targets.map((target) => (
@@ -307,7 +341,7 @@ export function ContentManager({
           </ul>
         )}
 
-        <NewPlacementForm scope={scope} onDone={() => router.refresh()} />
+        <PlacementForm scope={scope} onDone={() => router.refresh()} />
       </section>
 
       {message ? (
@@ -580,19 +614,48 @@ function NewPageForm({ scope, onDone }: { scope: Scope; onDone: () => void }) {
   );
 }
 
-function NewPlacementForm({
+/**
+ * One form for creating and for editing.
+ *
+ * Editing used to mean deleting and rebuilding, which threw away the schedule
+ * and the targeting rules along with the typo. Two separate forms would be two
+ * places for the field list to drift from the schema, so `placement` being
+ * present is the only difference between the two modes.
+ */
+function PlacementForm({
   scope,
+  placement,
   onDone,
+  onCancel,
 }: {
   scope: Scope;
+  /** Absent when creating. */
+  placement?: PlacementRow;
   onDone: () => void;
+  /** Only for the edit mode, where the parent owns the open state. */
+  onCancel?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const editing = placement !== undefined;
+  // Reading straight out of the stored JSONB. Without this the edit form opens
+  // blank and saving would wipe the banner it was meant to correct.
+  const content = (placement?.data ?? {}) as Record<string, unknown>;
+  const text = (key: string) =>
+    typeof content[key] === "string" ? (content[key] as string) : "";
+  const [open, setOpen] = useState(editing);
+  const [type, setType] = useState<BlockType>(
+    (placement?.type as BlockType) ?? "banner",
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [targets, setTargets] = useState([
-    { targetType: "everywhere", targetValue: "", isExclusion: false },
-  ]);
+  const [targets, setTargets] = useState(
+    placement && placement.targets.length > 0
+      ? placement.targets.map((target) => ({
+          targetType: target.targetType,
+          targetValue: target.targetValue ?? "",
+          isExclusion: target.isExclusion,
+        }))
+      : [{ targetType: "everywhere", targetValue: "", isExclusion: false }],
+  );
 
   if (!open) {
     return (
@@ -615,10 +678,9 @@ function NewPlacementForm({
         event.preventDefault();
         setError(null);
         const data = new FormData(event.currentTarget);
-        const type = String(data.get("type") ?? "banner");
 
         startTransition(async () => {
-          const result = await createPlacementAction({
+          const payload = {
             ...scope,
             type,
             slot: String(data.get("slot") ?? "above_content") as
@@ -628,14 +690,7 @@ function NewPlacementForm({
               | "in_grid",
             priority: Number(data.get("priority") ?? 0),
             publish: data.get("publish") === "on",
-            data: {
-              title: String(data.get("title") ?? ""),
-              body: String(data.get("body") ?? "") || undefined,
-              tone: String(data.get("tone") ?? "accent"),
-              ctaLabel: String(data.get("ctaLabel") ?? "") || undefined,
-              ctaHref: String(data.get("ctaHref") ?? "") || undefined,
-              code: String(data.get("code") ?? "") || undefined,
-            },
+            data: readBlockForm(type, data),
             targets: targets
               .filter((t) => t.targetType)
               .map((t) => ({
@@ -643,16 +698,28 @@ function NewPlacementForm({
                 targetValue: t.targetValue.trim() || null,
                 isExclusion: t.isExclusion,
               })),
-          });
+          };
+
+          // Status is not touched by an edit. Pausing and going live is its own
+          // control, and saving a wording change should not quietly publish a
+          // draft.
+          const result = placement
+            ? await updatePlacementAction({
+                ...payload,
+                placementId: placement.id,
+              })
+            : await createPlacementAction(payload);
 
           if (!result.ok) {
             setError(result.message);
             return;
           }
-          setOpen(false);
-          setTargets([
-            { targetType: "everywhere", targetValue: "", isExclusion: false },
-          ]);
+          if (!editing) {
+            setOpen(false);
+            setTargets([
+              { targetType: "everywhere", targetValue: "", isExclusion: false },
+            ]);
+          }
           onDone();
         });
       }}
@@ -663,12 +730,13 @@ function NewPlacementForm({
           <select
             id="p-type"
             name="type"
-            defaultValue="banner"
+            value={type}
+            onChange={(event) => setType(event.target.value as BlockType)}
             className="h-11 rounded-control border border-border-strong bg-surface-sunken px-4 text-sm"
           >
-            {PLACEMENT_BLOCK_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
+            {PLACEMENT_BLOCK_TYPES.map((option) => (
+              <option key={option} value={option}>
+                {BLOCK_LABELS[option]}
               </option>
             ))}
           </select>
@@ -679,7 +747,8 @@ function NewPlacementForm({
             id="p-slot"
             name="slot"
             defaultValue={
-              scope.scope === "store" ? "product_top" : "above_content"
+              placement?.slot ??
+              (scope.scope === "store" ? "product_top" : "above_content")
             }
             className="h-11 rounded-control border border-border-strong bg-surface-sunken px-4 text-sm"
           >
@@ -726,39 +795,16 @@ function NewPlacementForm({
         </div>
       </div>
 
-      <div className="grid gap-2">
-        <Label htmlFor="p-title">Title</Label>
-        <Input id="p-title" name="title" required maxLength={120} />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="p-body">Body</Label>
-        <Input id="p-body" name="body" maxLength={400} />
-      </div>
+      {/*
+        The same schema-driven fields the page editor uses.
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="grid gap-2">
-          <Label htmlFor="p-tone">Tone</Label>
-          <select
-            id="p-tone"
-            name="tone"
-            defaultValue="accent"
-            className="h-11 rounded-control border border-border-strong bg-surface-sunken px-4 text-sm"
-          >
-            <option value="accent">Accent</option>
-            <option value="neutral">Neutral</option>
-            <option value="positive">Positive</option>
-            <option value="critical">Critical</option>
-          </select>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="p-cta">Button label</Label>
-          <Input id="p-cta" name="ctaLabel" maxLength={40} />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="p-href">Button link</Label>
-          <Input id="p-href" name="ctaHref" placeholder="/search" />
-        </div>
-      </div>
+        The hand-written set here only covered banner and offerCard, so
+        choosing image or productGrid offered no fields at all — and every
+        field it did not render was silently dropped on save, because the
+        submitted data replaces the stored data wholesale. An offer card's
+        discount badge disappeared that way the first time one was edited.
+      */}
+      <BlockFields type={type} data={content} />
 
       <fieldset className="flex flex-col gap-2">
         <legend className="font-medium text-sm">Where it appears</legend>
@@ -869,7 +915,7 @@ function NewPlacementForm({
           <Input
             id="p-priority"
             name="priority"
-            defaultValue="0"
+            defaultValue={String(placement?.priority ?? 0)}
             inputMode="numeric"
             className="w-24"
           />
@@ -888,13 +934,13 @@ function NewPlacementForm({
 
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Saving…" : "Create"}
+          {pending ? "Saving…" : editing ? "Save changes" : "Create"}
         </Button>
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          onClick={() => setOpen(false)}
+          onClick={() => (onCancel ? onCancel() : setOpen(false))}
         >
           Cancel
         </Button>

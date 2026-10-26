@@ -202,7 +202,10 @@ function textToFaq(value: string) {
     .filter((item) => item.question && item.answer);
 }
 
-function readForm(type: BlockType, form: FormData): Record<string, unknown> {
+export function readBlockForm(
+  type: BlockType,
+  form: FormData,
+): Record<string, unknown> {
   if (type === "faq") {
     return { items: textToFaq(String(form.get("items") ?? "")) };
   }
@@ -350,7 +353,7 @@ export function PageEditor({
                   ...scope,
                   pageId,
                   type,
-                  data: readForm(type, form),
+                  data: readBlockForm(type, form),
                 });
                 if (result.ok) setAdding(null);
                 return result;
@@ -474,7 +477,7 @@ function BlockCard({
               const result = await updateBlockAction({
                 ...scope,
                 blockId: block.id,
-                data: readForm(type, form),
+                data: readBlockForm(type, form),
               });
               if (result.ok) setOpen(false);
               return result;
@@ -515,7 +518,7 @@ function summarise(block: EditorBlock): string {
   return first ? `· ${String(first).slice(0, 60)}` : "";
 }
 
-function BlockFields({
+export function BlockFields({
   type,
   data,
 }: {

@@ -620,6 +620,114 @@ export async function createPlacementAction(
   return { ok: true, id, message: "Placement created." };
 }
 
+/**
+ * Edits a placement: its content, position, priority, schedule and targeting.
+ *
+ * Previously the only way to change a banner's wording was to delete it and
+ * build it again, which loses the schedule and the targeting rules with it —
+ * so in practice a typo in a live promotion stayed there.
+ *
+ * The targets are replaced wholesale. They are a set of rules with no identity
+ * of their own, and diffing them would be more code for the same result.
+ */
+export async function updatePlacementAction(
+  input: Scope & { placementId: string } & z.input<typeof placementSchema>,
+): Promise<ContentResult> {
+  const scope = scopeSchema.safeParse(input);
+  if (!scope.success) return { ok: false, message: "Invalid scope." };
+
+  const placementId = z.uuid().safeParse(input.placementId);
+  if (!placementId.success) return { ok: false, message: "Invalid request." };
+
+  const parsed = placementSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0].message };
+  }
+
+  const actor = await authorise(scope.data, "placement");
+
+  // The same slot restriction as on create. A seller who could edit their way
+  // into the announcement bar would be dressing a page they do not own, and an
+  // edit is as good a route in as an insert.
+  if (!slotAllowedForScope(scope.data, parsed.data.slot)) {
+    return {
+      ok: false,
+      message:
+        "That position belongs to the whole site. A store offer can sit anywhere on its own product pages.",
+    };
+  }
+
+  const [existing] = await db
+    .select({ id: placements.id, status: placements.status })
+    .from(placements)
+    .where(
+      and(
+        eq(placements.id, placementId.data),
+        scope.data.scope === "store"
+          ? eq(placements.storeId, scope.data.storeId)
+          : isNull(placements.storeId),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) return { ok: false, message: "Placement not found." };
+
+  const validated = validateBlockInput(parsed.data.type, parsed.data.data);
+  if (!validated.ok) return { ok: false, message: validated.message };
+
+  const starts = parsed.data.startsAt ? new Date(parsed.data.startsAt) : null;
+  const ends = parsed.data.endsAt ? new Date(parsed.data.endsAt) : null;
+  if (starts && ends && ends <= starts) {
+    return { ok: false, message: "The end must come after the start." };
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(placements)
+      .set({
+        type: parsed.data.type,
+        slot: parsed.data.slot,
+        data: validated.data,
+        priority: parsed.data.priority,
+        startsAt: starts,
+        endsAt: ends,
+      })
+      .where(eq(placements.id, placementId.data));
+
+    await tx
+      .delete(placementTargets)
+      .where(eq(placementTargets.placementId, placementId.data));
+
+    await tx.insert(placementTargets).values(
+      parsed.data.targets.map((target) => ({
+        placementId: placementId.data,
+        targetType: target.targetType,
+        targetValue: target.targetValue,
+        isExclusion: target.isExclusion,
+      })),
+    );
+
+    await tx.insert(auditLog).values({
+      storeId: scope.data.scope === "store" ? scope.data.storeId : null,
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: "placement.update",
+      targetType: "placement",
+      targetId: placementId.data,
+      after: {
+        type: parsed.data.type,
+        slot: parsed.data.slot,
+        targets: parsed.data.targets,
+      },
+    });
+  });
+
+  // A placement can appear anywhere, so nothing narrower than the whole
+  // storefront is safe to revalidate.
+  revalidatePath("/", "layout");
+  return { ok: true, id: placementId.data, message: "Placement updated." };
+}
+
 export async function setPlacementStatusAction(
   input: Scope & { placementId: string; publish: boolean },
 ): Promise<ContentResult> {

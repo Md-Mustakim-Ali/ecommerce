@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import {
   type DiscountRow,
   deleteDiscountAction,
   setDiscountStatusAction,
+  updateDiscountAction,
 } from "@/lib/actions/discount-admin";
 import { formatMoney } from "@/lib/money/format";
 
@@ -68,7 +70,7 @@ export function DiscountManager({
       </div>
 
       {creating ? (
-        <NewDiscountForm scope={scope} onDone={() => setCreating(false)} />
+        <DiscountForm scope={scope} onDone={() => setCreating(false)} />
       ) : null}
 
       {mine.length === 0 ? (
@@ -135,6 +137,8 @@ function DiscountRowView({
   scope: Scope;
   discount: DiscountRow;
 }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -227,14 +231,24 @@ function DiscountRowView({
             </Button>
           )}
           {discount.status !== "archived" ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pending}
-              onClick={() => move("archived")}
-            >
-              Archive
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => setEditing((value) => !value)}
+              >
+                {editing ? "Close" : "Edit"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => move("archived")}
+              >
+                Archive
+              </Button>
+            </>
           ) : null}
           <DeleteDiscount
             scope={scope}
@@ -244,6 +258,18 @@ function DiscountRowView({
           />
         </div>
       </div>
+
+      {editing ? (
+        <DiscountForm
+          scope={scope}
+          discount={discount}
+          onDone={() => {
+            setEditing(false);
+            router.refresh();
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : null}
 
       {error ? (
         <p role="alert" className="text-critical text-xs">
@@ -321,16 +347,42 @@ function DeleteDiscount({
   );
 }
 
-function NewDiscountForm({
+/** Minor units back to the string the form edits. */
+function toInput(cents: number | null | undefined): string {
+  return cents === null || cents === undefined ? "" : (cents / 100).toFixed(2);
+}
+
+/** A Date back to the value a datetime-local input accepts. */
+function toLocalInput(date: Date | null): string {
+  if (!date) return "";
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+/**
+ * One form for creating and for editing.
+ *
+ * The code itself is not editable. It is what a buyer typed and what every
+ * redemption row points at, so renaming it would invalidate anything already
+ * circulating — a printed card, an email — while leaving the redemptions
+ * attached to a name nobody can use again.
+ */
+function DiscountForm({
   scope,
+  discount,
   onDone,
+  onCancel,
 }: {
   scope: Scope;
+  /** Absent when creating. */
+  discount?: DiscountRow;
   onDone: () => void;
+  onCancel?: () => void;
 }) {
+  const editing = discount !== undefined;
   const [kind, setKind] = useState<
     "percentage" | "fixed_amount" | "free_shipping"
-  >("percentage");
+  >(discount?.kind ?? "percentage");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -342,9 +394,11 @@ function NewDiscountForm({
         setError(null);
         const data = new FormData(event.currentTarget);
         startTransition(async () => {
-          const result = await createDiscountAction({
+          const payload = {
             ...scope,
-            code: String(data.get("code") ?? ""),
+            // Sent on edit too, because the schema requires it; the server
+            // ignores it and keeps the stored code.
+            code: discount?.code ?? String(data.get("code") ?? ""),
             kind,
             value: String(data.get("value") ?? "0"),
             maxDiscount: String(data.get("maxDiscount") ?? ""),
@@ -355,7 +409,15 @@ function NewDiscountForm({
             startsAt: String(data.get("startsAt") ?? ""),
             endsAt: String(data.get("endsAt") ?? ""),
             publish: data.get("publish") === "on",
-          });
+          };
+
+          const result = discount
+            ? await updateDiscountAction({
+                ...payload,
+                discountId: discount.id,
+              })
+            : await createDiscountAction(payload);
+
           if (!result.ok) {
             setError(result.message);
             return;
@@ -370,14 +432,18 @@ function NewDiscountForm({
           <Input
             id="d-code"
             name="code"
-            required
+            required={!editing}
+            disabled={editing}
+            defaultValue={discount?.code ?? ""}
             maxLength={40}
             placeholder="SUMMER20"
             className="uppercase"
             autoCapitalize="characters"
           />
           <p className="text-tertiary-text text-xs">
-            Case does not matter to shoppers — it is matched upper-case.
+            {editing
+              ? "The code cannot change — anything already circulating points at it."
+              : "Case does not matter to shoppers — it is matched upper-case."}
           </p>
         </div>
 
@@ -405,6 +471,13 @@ function NewDiscountForm({
             <Input
               id="d-value"
               name="value"
+              defaultValue={
+                discount
+                  ? discount.kind === "percentage"
+                    ? String(discount.value / 100)
+                    : toInput(discount.value)
+                  : ""
+              }
               required
               inputMode="decimal"
               placeholder={kind === "percentage" ? "20" : "10.00"}
@@ -417,6 +490,7 @@ function NewDiscountForm({
               <Input
                 id="d-max"
                 name="maxDiscount"
+                defaultValue={toInput(discount?.maxDiscountCents)}
                 inputMode="decimal"
                 placeholder="50.00"
               />
@@ -435,6 +509,7 @@ function NewDiscountForm({
           <Input
             id="d-min"
             name="minSubtotal"
+            defaultValue={toInput(discount?.minSubtotalCents)}
             inputMode="decimal"
             placeholder="25.00"
           />
@@ -444,6 +519,7 @@ function NewDiscountForm({
           <Input
             id="d-uses"
             name="maxRedemptions"
+            defaultValue={discount?.maxRedemptions ?? ""}
             inputMode="numeric"
             placeholder="unlimited"
           />
@@ -454,7 +530,7 @@ function NewDiscountForm({
             id="d-per"
             name="perCustomerLimit"
             inputMode="numeric"
-            defaultValue="1"
+            defaultValue={discount ? (discount.perCustomerLimit ?? "") : "1"}
           />
         </div>
       </div>
@@ -462,11 +538,21 @@ function NewDiscountForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="d-starts">Starts (optional)</Label>
-          <Input id="d-starts" name="startsAt" type="datetime-local" />
+          <Input
+            id="d-starts"
+            name="startsAt"
+            type="datetime-local"
+            defaultValue={toLocalInput(discount?.startsAt ?? null)}
+          />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="d-ends">Ends (optional)</Label>
-          <Input id="d-ends" name="endsAt" type="datetime-local" />
+          <Input
+            id="d-ends"
+            name="endsAt"
+            type="datetime-local"
+            defaultValue={toLocalInput(discount?.endsAt ?? null)}
+          />
         </div>
       </div>
 
@@ -475,6 +561,7 @@ function NewDiscountForm({
         <Input
           id="d-desc"
           name="description"
+          defaultValue={discount?.description ?? ""}
           maxLength={200}
           placeholder="20% off the autumn range"
         />
@@ -498,9 +585,14 @@ function NewDiscountForm({
       <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={pending}>
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : null}
-          Create code
+          {editing ? "Save changes" : "Create code"}
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={onCancel ?? onDone}
+        >
           Cancel
         </Button>
       </div>
