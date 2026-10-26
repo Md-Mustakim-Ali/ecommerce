@@ -14,7 +14,9 @@ import { db } from "../lib/db/index.ts";
 import { stores, user } from "../lib/db/schema/index.ts";
 import { SEED_PASSWORD } from "./seed-data.ts";
 
-const BASE = "http://localhost:3000";
+// Overridable like the other scripts, so a dev server on a different port
+// does not silently probe whatever else is listening on 3000.
+const BASE = process.env.VERIFY_BASE_URL ?? "http://localhost:3300";
 let failures = 0;
 
 function check(label: string, condition: boolean, detail = "") {

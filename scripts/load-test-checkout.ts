@@ -29,7 +29,7 @@ import {
   subOrders,
 } from "../lib/db/schema/index.ts";
 
-const BASE = process.env.VERIFY_BASE_URL ?? "http://localhost:3000";
+const BASE = process.env.VERIFY_BASE_URL ?? "http://localhost:3300";
 const CONCURRENCY = Number(process.argv[2] ?? 12);
 const ROUNDS = Number(process.argv[3] ?? 3);
 

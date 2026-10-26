@@ -19,7 +19,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../lib/db/index.ts";
 import { orders, stores, user } from "../lib/db/schema/index.ts";
 
-const BASE = process.env.VERIFY_BASE_URL ?? "http://localhost:3000";
+const BASE = process.env.VERIFY_BASE_URL ?? "http://localhost:3300";
 const PASSWORD = "seed-password-1234";
 
 let failures = 0;
