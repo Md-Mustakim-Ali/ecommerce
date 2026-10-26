@@ -416,6 +416,58 @@ html.dark {
     text-rendering: optimizeLegibility;
   }
 
+  /* ---------------------------------------------------------------------
+     Scrollbars
+     ---------------------------------------------------------------------
+     The stock scrollbar is a wide grey trough drawn by the OS. It ignores
+     every token in this file, so on a dark surface it arrives as a bright
+     band down the edge of the design — the one element that never got
+     styled, and the most visible.
+
+     Thin, no track, and a thumb built from the border tokens, so it reads as
+     part of the surface it sits on and follows light and dark with
+     everything else.
+
+     Both syntaxes on purpose: the standard properties are what Firefox
+     honours, and the -webkit- pseudo-elements are what Chromium honours.
+     Neither alone covers the browsers this has to run in.
+  --------------------------------------------------------------------- */
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    /* Padding-box plus a transparent border is the trick that insets the
+       thumb without a wrapper: the border is drawn in the track's colour,
+       which is nothing, so the thumb reads as narrower than the gutter it
+       needs for a comfortable hit area. */
+    background-color: var(--border);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--border-strong);
+  }
+
+  /* The square where the two bars meet, which otherwise renders as a light
+     grey block in the corner. */
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   /* Visible keyboard focus on everything. AGENTS.md treats this as a floor,
      so it lives in base rather than being reapplied per component. */
   :focus-visible {

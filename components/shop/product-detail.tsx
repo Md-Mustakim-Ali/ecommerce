@@ -7,6 +7,7 @@ import {
   type ProductAttribute,
 } from "@/components/shop/option-picker";
 import { ProductGallery } from "@/components/shop/product-gallery";
+import { cn } from "@/lib/utils";
 
 export type DetailImage = {
   id: string;
@@ -40,6 +41,7 @@ export function ProductDetail({
   beforePrice,
   afterOptions,
   sidebar,
+  layout = "page",
 }: {
   images: DetailImage[];
   attributes: ProductAttribute[];
@@ -60,6 +62,18 @@ export function ProductDetail({
   beforePrice?: React.ReactNode;
   afterOptions?: React.ReactNode;
   sidebar?: React.ReactNode;
+  /**
+   * Where this is being rendered.
+   *
+   * A page has vertical room and gives the gallery a 4:5 portrait frame,
+   * because there the gallery is the reason for the page. A dialog does not:
+   * it is capped at the viewport, and a portrait frame inside it is the single
+   * biggest reason a quick view overflows. In "dialog" the frame is 4:3, the
+   * columns hold from the medium breakpoint rather than the large one, and
+   * only the right column scrolls — so the photo stays put instead of sliding
+   * away while somebody reads the options.
+   */
+  layout?: "page" | "dialog";
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -105,16 +119,42 @@ export function ProductDetail({
     [images],
   );
 
+  const dialog = layout === "dialog";
+
   return (
-    <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-      <ProductGallery
-        images={galleryImages}
-        title={title}
-        activeIndex={activeIndex}
-        onActiveIndexChange={setActiveIndex}
-        morphName={morphName}
-      />
-      <div className="flex flex-col gap-5">
+    <div
+      className={cn(
+        "grid",
+        dialog
+          ? // flex-1 and min-h-0 because the dialog popup is a flex column:
+            // without them this grid takes its natural height and the right
+            // column has nothing to scroll within.
+            "min-h-0 flex-1 gap-0 md:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]"
+          : "gap-8 lg:grid-cols-2 lg:gap-12",
+      )}
+    >
+      <div className={cn(dialog && "min-w-0 bg-surface-sunken p-4 md:p-5")}>
+        <ProductGallery
+          images={galleryImages}
+          title={title}
+          activeIndex={activeIndex}
+          onActiveIndexChange={setActiveIndex}
+          morphName={morphName}
+          aspect={dialog ? "aspect-[4/3]" : undefined}
+        />
+      </div>
+
+      <div
+        className={cn(
+          "flex flex-col",
+          dialog
+            ? // Only this column scrolls, and only when the options are long
+              // enough to need it. Scrolling the whole panel is what made the
+              // old one feel like two halves sliding past each other.
+              "min-h-0 gap-4 overflow-y-auto p-5"
+            : "gap-5",
+        )}
+      >
         {beforePrice}
         <OptionPicker
           attributes={attributes}

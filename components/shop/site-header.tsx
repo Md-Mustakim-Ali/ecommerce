@@ -39,7 +39,6 @@ export function SiteHeader({
     isStaff: boolean;
   } | null;
 }) {
-  const signedIn = account !== null;
   const { count, setOpen } = useCart();
   const router = useRouter();
   const params = useSearchParams();

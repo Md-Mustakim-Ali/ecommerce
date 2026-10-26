@@ -639,8 +639,6 @@ function PlacementForm({
   // Reading straight out of the stored JSONB. Without this the edit form opens
   // blank and saving would wipe the banner it was meant to correct.
   const content = (placement?.data ?? {}) as Record<string, unknown>;
-  const text = (key: string) =>
-    typeof content[key] === "string" ? (content[key] as string) : "";
   const [open, setOpen] = useState(editing);
   const [type, setType] = useState<BlockType>(
     (placement?.type as BlockType) ?? "banner",

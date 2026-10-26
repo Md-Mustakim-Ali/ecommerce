@@ -25,6 +25,7 @@ export function ProductGallery({
   activeIndex,
   onActiveIndexChange,
   morphName,
+  aspect = "aspect-[4/5]",
 }: {
   images: GalleryImage[];
   title: string;
@@ -36,6 +37,15 @@ export function ProductGallery({
    * card the shopper clicked instead of the page simply replacing it.
    */
   morphName?: string;
+  /**
+   * Overrides the frame shape.
+   *
+   * 4:5 is right on a product page, where the gallery is the reason for the
+   * page and vertical room is free. In a dialog it is wrong: a portrait frame
+   * is the single biggest reason a quick view does not fit on screen, and a
+   * quick view that scrolls has stopped being quick.
+   */
+  aspect?: string;
 }) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
@@ -69,7 +79,9 @@ export function ProductGallery({
   }, [emblaApi, onSelect]);
 
   if (images.length === 0) {
-    return <div className="aspect-[4/5] w-full rounded-xl bg-surface-sunken" />;
+    return (
+      <div className={cn(aspect, "w-full rounded-xl bg-surface-sunken")} />
+    );
   }
 
   // Only while the first slide is showing. Once the shopper has swiped, the
@@ -84,7 +96,7 @@ export function ProductGallery({
           {images.map((image, index) => (
             <div key={image.id} className="relative min-w-0 flex-[0_0_100%]">
               <div
-                className="relative aspect-[4/5] bg-surface-sunken"
+                className={cn("relative bg-surface-sunken", aspect)}
                 style={
                   index === 0 && heroName
                     ? { viewTransitionName: heroName }

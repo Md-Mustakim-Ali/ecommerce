@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { MorphLink } from "@/components/motion/morph-link";
-import { PointerSurface } from "@/components/motion/pointer-surface";
 import { QuickAdd } from "@/components/shop/quick-add";
 import { QuickView } from "@/components/shop/quick-view";
 import { RatingStars } from "@/components/shop/rating-stars";
@@ -16,23 +15,35 @@ import { cn } from "@/lib/utils";
 /**
  * The storefront's most repeated surface, so it sets the tone for everything.
  *
- * Rebuilt from a version that read as a placeholder, for reasons worth writing
- * down because they are all the same reason:
+ * ── Why the hover is built this way ──────────────────────────────────────
  *
- * The image was square and inset inside a padded card, which made the photo
- * roughly two thirds of the card's height and left the information crammed
- * into what was left. The fix is not smaller padding — it is a shorter image
- * (4:3) that runs edge to edge, so the card has a top rather than a frame, and
- * the space saved goes to the text instead of to a margin around a picture.
+ * The card used to be wrapped in PointerSurface, which tilts it in 3D and
+ * paints a specular highlight that tracks the pointer. Neither ever ran here,
+ * and the reason is worth recording: the grid also puts `.scroll-settle` on
+ * that same element, and that is a scroll-driven animation on `transform`. A
+ * running animation beats a plain declaration in the cascade, so the tilt was
+ * overwritten on every card, permanently.
  *
- * The text then gets real padding, because 12px against a card edge is what
- * made it feel stuck to the side rather than laid out.
+ * What survived was the sheen, because it lives on a pseudo-element and so was
+ * not overwritten — a white radial blob sitting dead centre over the card for
+ * as long as the pointer was anywhere on it. The card appeared to have no
+ * motion and one static smudge, which is exactly what it had.
  *
- * And there is more of it. A card carrying only a name and a price is asking
- * the shopper to open the page to learn anything, which on a grid of
- * twenty-four is twenty-four wasted trips. Seller, rating, stock and variant
- * count are all already loaded — showing them costs nothing and answers most
- * of the questions that would otherwise be a click.
+ * The tilt and the sheen are gone. A 3D tilt across twenty-four cards is the
+ * wrong instrument regardless: it draws the eye to the container rather than
+ * the product, and twenty-four of them tilting is a novelty, not a shop.
+ *
+ * What replaced it is quiet, and lives on the inner <article>, which nothing
+ * else animates — so the two systems cannot collide again:
+ *
+ *   - the card lifts and its shadow grows, over 260ms
+ *   - the photo drifts to 1.04 over 700ms, slow enough to read as a push in
+ *     rather than the pop a fast scale gives
+ *   - the wash over the image deepens, so it reads as lit
+ *   - the actions slide down from the edge instead of blinking on
+ *
+ * All transform and opacity, so a grid of these holds frame on the mid-range
+ * Android in the performance budget.
  */
 export function ProductCard({
   product,
@@ -71,12 +82,19 @@ export function ProductCard({
   const seller = product.storeName;
 
   return (
-    <PointerSurface className={cn("group rounded-xl", className)}>
+    <div className={cn("group", className)}>
       <article
         data-morph-scope
         className={cn(
-          "flex h-full flex-col overflow-hidden rounded-xl bg-surface-1 shadow-e1",
-          "ring-1 ring-border/60 transition-shadow duration-[--duration-base]",
+          "flex h-full flex-col overflow-hidden rounded-xl bg-surface-1",
+          "shadow-e1 ring-1 ring-border/60",
+          // The lift. transform and box-shadow only, and on this element
+          // rather than the one the grid's scroll animation owns.
+          "transition-[transform,box-shadow] duration-[--duration-base] ease-[--ease-out]",
+          "[@media(hover:hover)]:group-hover:-translate-y-1",
+          "[@media(hover:hover)]:group-hover:shadow-e3",
+          // Pressing pushes it back down, so a tap has an answer on touch too.
+          "active:translate-y-0 active:shadow-e1 active:duration-[--duration-instant]",
         )}
       >
         <div className="relative overflow-hidden">
@@ -97,14 +115,14 @@ export function ProductCard({
             {/*
               4:3 rather than square. A square photo on a grid column this wide
               is tall enough to push everything else below the fold of the
-              card, which is what made the old one feel like an image with a
-              caption instead of a product.
+              card, which made the old one read as an image with a caption
+              instead of a product.
 
               data-morph is what MorphLink names when the card is clicked.
             */}
             <div
               data-morph
-              className="parallax relative aspect-[4/3] overflow-hidden bg-surface-sunken"
+              className="relative aspect-[4/3] overflow-hidden bg-surface-sunken"
             >
               {product.imageUrl ? (
                 <Image
@@ -117,13 +135,13 @@ export function ProductCard({
                   blurDataURL={product.blurDataUrl ?? undefined}
                   className={cn(
                     "object-cover",
-                    // The hover the card was missing. The photo is the biggest
-                    // thing on the card and it did not move at all, which is
-                    // why hovering felt like nothing was happening. Scale is
-                    // compositor-only, so a grid of these still holds frame.
-                    "transition-transform duration-[--duration-slow] ease-[--ease-out]",
-                    "[@media(hover:hover)]:group-hover:scale-[1.06]",
-                    soldOut && "opacity-60 saturate-50",
+                    // 700ms, not the 300 a scale normally gets. At card size
+                    // the difference between a drift and a jump is entirely
+                    // duration; anything quick reads as the image snapping
+                    // toward you.
+                    "transition-transform duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
+                    "[@media(hover:hover)]:group-hover:scale-[1.04]",
+                    soldOut && "opacity-55 saturate-50",
                   )}
                 />
               ) : (
@@ -131,16 +149,16 @@ export function ProductCard({
               )}
 
               {/*
-                A wash that deepens on hover, so the image reads as lit rather
-                than simply enlarged, and the badges keep their contrast over
-                whatever photo a seller uploaded.
+                A wash from the bottom. It keeps the badges legible over
+                whatever photo a seller uploaded, and deepening it slightly on
+                hover makes the image read as lit rather than merely bigger.
               */}
               <div
                 aria-hidden
                 className={cn(
                   "pointer-events-none absolute inset-0",
-                  "bg-gradient-to-t from-black/25 via-transparent to-transparent",
-                  "opacity-60 transition-opacity duration-[--duration-base]",
+                  "bg-gradient-to-t from-black/20 via-transparent to-transparent",
+                  "opacity-70 transition-opacity duration-[--duration-base]",
                   "[@media(hover:hover)]:group-hover:opacity-100",
                 )}
               />
@@ -164,15 +182,14 @@ export function ProductCard({
           {/*
             Actions, top-right. Always visible on touch — a hover-only control
             is unreachable on a phone, which is where most of this traffic is.
-            On a pointer they slide in from the edge rather than fading, so the
-            movement reads as the card responding rather than a layer blinking
-            on.
+            On a pointer they slide down from the edge, so the movement reads
+            as the card answering rather than a layer blinking on.
           */}
           <div
             className={cn(
               "absolute top-2.5 right-2.5 flex flex-col gap-1.5",
               "transition-[opacity,transform] duration-[--duration-base] ease-[--ease-out]",
-              "[@media(hover:hover)]:-translate-y-1 [@media(hover:hover)]:opacity-0",
+              "[@media(hover:hover)]:-translate-y-2 [@media(hover:hover)]:opacity-0",
               "[@media(hover:hover)]:group-hover:translate-y-0 [@media(hover:hover)]:group-hover:opacity-100",
               "[@media(hover:hover)]:group-focus-within:translate-y-0 [@media(hover:hover)]:group-focus-within:opacity-100",
             )}
@@ -218,7 +235,8 @@ export function ProductCard({
             prefetch
             className={cn(
               "line-clamp-2 font-medium text-[0.9375rem] leading-snug",
-              "outline-none transition-colors hover:text-accent-text",
+              "outline-none transition-colors duration-[--duration-fast]",
+              "[@media(hover:hover)]:group-hover:text-accent-text",
               "focus-visible:underline focus-visible:decoration-2 focus-visible:underline-offset-2",
             )}
           >
@@ -286,6 +304,6 @@ export function ProductCard({
           </div>
         </div>
       </article>
-    </PointerSurface>
+    </div>
   );
 }

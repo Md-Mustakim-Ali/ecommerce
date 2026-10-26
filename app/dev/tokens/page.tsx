@@ -213,7 +213,7 @@ export default async function TokensPage() {
 
         <Section
           title="Feel"
-          note="Hover a card for pointer-reactive tilt and sheen. Scroll for parallax on the imagery. All compositor-only, all off under reduced motion."
+          note="Scroll for parallax on the imagery and the settle as cards arrive. Product cards deliberately do not use the pointer tilt: the grid animates their transform on scroll, and two systems on one transform means one of them silently loses."
         >
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {DEMO_PRODUCTS.map((product) => (
