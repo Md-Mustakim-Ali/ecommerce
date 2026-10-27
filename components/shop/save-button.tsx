@@ -62,7 +62,7 @@ export function SaveButton({
       aria-label={saved ? "Remove from saved" : "Save for later"}
       title={saved ? "Saved" : "Save for later"}
       className={cn(
-        "grid size-9 place-items-center rounded-full backdrop-blur transition-all",
+        "grid size-9 place-items-center rounded-full backdrop-blur transition-[color,background-color,transform] duration-(--duration-fast) ease-(--ease-out)",
         "touch-manipulation active:scale-[0.88]",
         saved
           ? "bg-critical text-surface-1"

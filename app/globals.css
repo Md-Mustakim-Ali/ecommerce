@@ -328,15 +328,47 @@ html.dark {
   --radius-xl: 2rem;
   --radius-2xl: 2.5rem;
 
-  /* Functional transitions stay under 300ms per AGENTS.md. --ease-out is an
-     expo curve: it leaves fast and settles slowly, which is what makes a
-     surface feel like it has mass. */
-  --duration-instant: 100ms;
-  --duration-fast: 150ms;
-  --duration-base: 200ms;
-  --duration-slow: 280ms;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* -- Motion ---------------------------------------------------------------
+     One scale, four curves, and the rule that decides which to use: what is
+     the element doing?
+
+     The distinction that matters here is between a thing ARRIVING and a thing
+     CHANGING. Everything used to share one curve — an expo-out, which covers
+     roughly ninety per cent of the distance in the first fifth of the time.
+     On something arriving from nothing that is exactly right: it enters
+     decisively and settles. On a hover it is wrong, and wrong in a specific
+     way — the element snaps to its new position and then spends the rest of
+     the duration almost still, which the eye reads as a jump, not a movement.
+     Using it for both is why hover felt abrupt no matter what the duration
+     was.
+
+     So: --ease-out for state changes, --ease-entrance for arrivals.
+
+     Functional transitions stay at or under 300ms per AGENTS.md. --panel is
+     the one value above the ceiling, and it earns it: a drawer crosses the
+     whole width of the screen, and at 300ms that distance becomes a snap.
+     Distance is what sets duration, not importance.
+
+     There was briefly a --duration-drift at 560ms for the product photo
+     easing under its frame. It is gone. Nothing on a card should outlast the
+     card's own movement — see the note in components/shop/product-card.tsx
+     for what that actually looked like. */
+  --duration-instant: 90ms;
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 300ms;
+  /* Panels crossing real distance: dialogs, drawers, sheets. */
+  --duration-panel: 420ms;
+
+  /* easeOutCubic. Smooth deceleration with no snap — the default, and what
+     every hover and state change should use. */
+  --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  /* easeOutExpo. Decisive arrival, long settle. For things entering from
+     nothing, where the snap is the point. */
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Symmetric, for anything that goes and comes back along the same path. */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Overshoots. Confirmations only — an element that agrees with you. */
   --ease-emphasis: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -414,6 +446,84 @@ html.dark {
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  /* ---------------------------------------------------------------------
+     Default transition for interactive elements
+     ---------------------------------------------------------------------
+     An audit (scripts/audit-motion.ts) found sixty places where a hover or
+     focus state changed a colour with no transition on it at all: table rows,
+     breadcrumbs, filter chips, textareas, the tab bars in both dashboards.
+     Each was individually forgettable and collectively they were most of the
+     reason the app felt abrupt — tuning easing curves does nothing for a
+     control that simply swaps colour on one frame.
+
+     Rather than paste a transition onto sixty class lists and watch them drift
+     apart, the default lives here.
+
+     Three things make this safe:
+
+     - It is in @layer base, which sits below Tailwind's utilities. Any
+       component that declares its own transition-[...] utility overrides this
+       entirely, property list and all — so every deliberate transition in the
+       codebase still wins.
+     - Only paint properties are listed. Nothing here can cause layout, and
+       transform is deliberately absent: transform is how the scroll-linked
+       animations and the card hover move, and a default transition on it
+       would interfere with both.
+     - It is scoped to elements a person can interact with, not to `*`. A
+       blanket selector would also animate every container that merely
+       inherits a colour, which is how this technique usually goes wrong.
+  --------------------------------------------------------------------- */
+
+  a,
+  button,
+  summary,
+  label,
+  select,
+  input,
+  textarea,
+  [role="button"],
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  [role="link"] {
+    transition:
+      color var(--duration-fast) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out),
+      outline-color var(--duration-fast) var(--ease-out),
+      box-shadow var(--duration-fast) var(--ease-out),
+      opacity var(--duration-fast) var(--ease-out);
+  }
+
+  /*
+    Except while the theme is changing.
+
+    The toggle's circular clip-path reveal wipes the new theme across the old
+    one, and it works because the pixels behind the wipe are already fully in
+    the new theme. With the default above in play they would not be: every
+    link and button would spend 160ms crossfading its own colour after the
+    wipe had passed over it, so the reveal would drag a trail of half-switched
+    controls behind its edge.
+
+    data-theme-transition is set by components/theme-toggle.tsx for exactly the
+    length of the view transition and removed on finish.
+  */
+  html[data-theme-transition] a,
+  html[data-theme-transition] button,
+  html[data-theme-transition] summary,
+  html[data-theme-transition] label,
+  html[data-theme-transition] select,
+  html[data-theme-transition] input,
+  html[data-theme-transition] textarea,
+  html[data-theme-transition] [role] {
+    transition: none;
   }
 
   /* ---------------------------------------------------------------------
@@ -536,6 +646,85 @@ html.dark {
   }
 
   /* ---------------------------------------------------------------------
+     Overlay motion
+     ---------------------------------------------------------------------
+     Every backdrop, dialog, menu, select and drawer in the app opens and
+     closes through these three classes, so the whole overlay layer shares one
+     set of timings instead of each component carrying its own.
+
+     Two rules encoded here:
+
+     1. Opening and closing are not symmetric. Opening is an arrival and gets
+        the expo curve and the long duration, because the shopper is waiting
+        for it and a decisive entrance reads as responsive. Closing is an
+        acknowledgement of something already decided, and anything over about
+        180ms there feels like the interface is arguing. Every class below
+        overrides duration and easing under [data-ending-style] for that
+        reason.
+
+     2. Only opacity, scale and translate are transitioned. All three are
+        their own CSS properties in Tailwind 4 rather than components of one
+        `transform` string, which is why they can be listed separately and why
+        a dialog's centring translate and its entrance scale no longer
+        overwrite each other.
+
+     Base UI writes data-starting-style for one frame at the start and
+     data-ending-style for the length of the exit; vaul does its own thing and
+     is left alone.
+  --------------------------------------------------------------------- */
+
+  .motion-backdrop {
+    transition: opacity var(--duration-base) var(--ease-out);
+  }
+
+  .motion-backdrop[data-starting-style],
+  .motion-backdrop[data-ending-style] {
+    opacity: 0;
+  }
+
+  .motion-backdrop[data-ending-style] {
+    transition-duration: var(--duration-fast);
+  }
+
+  /* Surfaces that appear in place: centred dialogs, dropdowns, selects,
+     popovers. They scale from their own transform-origin, which Base UI
+     points at the trigger for anchored menus, so a select grows out of the
+     control it belongs to rather than out of thin air. */
+  .motion-popup {
+    transition:
+      opacity var(--duration-slow) var(--ease-entrance),
+      scale var(--duration-slow) var(--ease-entrance);
+  }
+
+  .motion-popup[data-starting-style],
+  .motion-popup[data-ending-style] {
+    opacity: 0;
+    scale: 0.96;
+  }
+
+  .motion-popup[data-ending-style] {
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-out);
+  }
+
+  /* Surfaces that cross real distance: sheets and drawers.
+
+     Translate only — no fade. The consumer slides these fully off their own
+     edge, so by the end of the exit the panel is outside the viewport and
+     fading it as well would only make it translucent on the way past the
+     content it is covering. A panel that both moves and dissolves reads as two
+     effects fighting; this one just moves, and the backdrop above handles the
+     sense of the room dimming. */
+  .motion-panel {
+    transition: translate var(--duration-panel) var(--ease-entrance);
+  }
+
+  .motion-panel[data-ending-style] {
+    transition-duration: var(--duration-base);
+    transition-timing-function: var(--ease-out);
+  }
+
+  /* ---------------------------------------------------------------------
      Scroll-linked motion
      ---------------------------------------------------------------------
      Deliberately scroll-LINKED, not scroll-triggered. The value tracks the
@@ -562,11 +751,17 @@ html.dark {
       }
 
       /* A card settles as it reaches its resting position and eases back out
-         as it leaves. Continuous, reversible, tied to position. */
+         as it leaves. Continuous, reversible, tied to position.
+
+         The range ends at `entry 55%`, not 90%. Finishing at 90% means a card
+         is still dimmed and displaced when it is most of the way up the
+         viewport — the shopper watches it catch up, which is the opposite of
+         settled. Finishing barely past halfway means it is already at rest by
+         the time it is somewhere the eye would rest on it. */
       .scroll-settle {
         animation: scroll-settle linear both;
         animation-timeline: view();
-        animation-range: entry 10% entry 90%;
+        animation-range: entry 5% entry 55%;
       }
 
       /* Sticky headers that condense as content passes under them. */
@@ -587,14 +782,29 @@ html.dark {
     }
   }
 
+  /*
+    Translate only, and not far.
+
+    The scale is gone on purpose. This runs on a card whose whole lower half
+    is text, and a fractional scale resamples every glyph in it for the entire
+    length of the scroll — the card arrives soft and sharpens at the last
+    moment. It was the single largest reason the grid read as mushy while
+    moving. Translation is a whole-pixel-ish shift of an already-composited
+    layer and costs the type nothing.
+
+    2.5rem was also too much for something driven by scroll position rather
+    than time: because the progress is linear in scroll offset, a 40px offset
+    means a flick of the wheel throws the card 40px against the direction of
+    travel. 0.75rem still reads as depth without fighting the scroll.
+  */
   @keyframes scroll-settle {
     from {
-      opacity: 0.4;
-      transform: translateY(2.5rem) scale(0.965);
+      opacity: 0.55;
+      transform: translate3d(0, 0.75rem, 0);
     }
     to {
       opacity: 1;
-      transform: none;
+      transform: translate3d(0, 0, 0);
     }
   }
 

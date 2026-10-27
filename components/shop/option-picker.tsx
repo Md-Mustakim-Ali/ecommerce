@@ -211,7 +211,7 @@ export function OptionPicker({
                       disabled={!reachable}
                       onClick={() => choose(attribute.id, value.id)}
                       className={cn(
-                        "relative size-11 rounded-full border-2 transition-all",
+                        "relative size-11 rounded-full border-2 transition-[border-color,box-shadow,transform] duration-(--duration-fast) ease-(--ease-out)",
                         "touch-manipulation active:scale-[0.92]",
                         active
                           ? "border-ring ring-2 ring-ring/30"
@@ -240,7 +240,7 @@ export function OptionPicker({
                     disabled={!reachable}
                     onClick={() => choose(attribute.id, value.id)}
                     className={cn(
-                      "min-h-11 rounded-control border px-4 text-sm transition-all",
+                      "min-h-11 rounded-control border px-4 text-sm transition-[background-color,border-color,color,transform] duration-(--duration-fast) ease-(--ease-out)",
                       "touch-manipulation active:scale-[0.96]",
                       active
                         ? "border-transparent bg-accent text-on-accent shadow-e1"

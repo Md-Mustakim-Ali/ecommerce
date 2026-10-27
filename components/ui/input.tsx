@@ -23,7 +23,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         "h-11 w-full min-w-0 rounded-control border border-border-strong",
         "bg-surface-sunken px-5 py-2 text-base text-primary-text md:text-sm",
         "shadow-well",
-        "transition-[border-color,box-shadow,background-color] duration-[--duration-fast] ease-[--ease-out]",
+        "transition-[border-color,box-shadow,background-color] duration-(--duration-fast) ease-(--ease-out)",
         "outline-none placeholder:text-tertiary-text",
         "hover:not-disabled:not-focus:border-border-strong/70",
         "focus-visible:border-ring focus-visible:bg-surface-1 focus-visible:ring-3 focus-visible:ring-ring/25",

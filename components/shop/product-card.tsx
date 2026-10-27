@@ -34,13 +34,31 @@ import { cn } from "@/lib/utils";
  * the product, and twenty-four of them tilting is a novelty, not a shop.
  *
  * What replaced it is quiet, and lives on the inner <article>, which nothing
- * else animates — so the two systems cannot collide again:
+ * else animates — so the two systems cannot collide again.
  *
- *   - the card lifts and its shadow grows, over 260ms
- *   - the photo drifts to 1.04 over 700ms, slow enough to read as a push in
- *     rather than the pop a fast scale gives
- *   - the wash over the image deepens, so it reads as lit
- *   - the actions slide down from the edge instead of blinking on
+ * ── Why every part of it shares one duration ─────────────────────────────
+ *
+ * The first version of this staggered them: the card lifted over 240ms and
+ * the photo scaled over 560ms, on the theory that a slower image reads as
+ * depth. It does not, at this size. What it actually produces is a card that
+ * finishes arriving while the picture inside it is still moving, and then —
+ * worse — on the way out, a card that drops back to rest while the photo
+ * spends another third of a second shrinking. The eye tracks that as two
+ * separate things happening to one object, which is the precise sensation of
+ * an interface that has not been finished.
+ *
+ * So the lift, the photo and the wash all run at --duration-slow. One gesture,
+ * one duration, one curve. The pieces move different distances, which is where
+ * the depth actually comes from.
+ *
+ * 300ms is also short enough to survive a grid: dragging the pointer across a
+ * row leaves each card fully settled before the next is touched, where a
+ * half-second scale leaves four images easing at once and the whole grid
+ * smears.
+ *
+ * The actions in the corner are the exception and stay at --duration-base.
+ * They are not part of the card moving — they are a control appearing, and a
+ * control the shopper may be reaching for should be there before they arrive.
  *
  * All transform and opacity, so a grid of these holds frame on the mid-range
  * Android in the performance budget.
@@ -90,11 +108,15 @@ export function ProductCard({
           "shadow-e1 ring-1 ring-border/60",
           // The lift. transform and box-shadow only, and on this element
           // rather than the one the grid's scroll animation owns.
-          "transition-[transform,box-shadow] duration-[--duration-base] ease-[--ease-out]",
-          "[@media(hover:hover)]:group-hover:-translate-y-1",
+          //
+          // 6px, not the 4px this started at. Four pixels against a shadow
+          // that is already soft is below the threshold where a lift reads as
+          // a lift at all — it looked like the card had simply got brighter.
+          "transition-[transform,box-shadow] duration-(--duration-slow) ease-(--ease-out)",
+          "[@media(hover:hover)]:group-hover:-translate-y-1.5",
           "[@media(hover:hover)]:group-hover:shadow-e3",
           // Pressing pushes it back down, so a tap has an answer on touch too.
-          "active:translate-y-0 active:shadow-e1 active:duration-[--duration-instant]",
+          "active:translate-y-0 active:shadow-e1 active:duration-(--duration-instant)",
         )}
       >
         <div className="relative overflow-hidden">
@@ -135,12 +157,11 @@ export function ProductCard({
                   blurDataURL={product.blurDataUrl ?? undefined}
                   className={cn(
                     "object-cover",
-                    // 700ms, not the 300 a scale normally gets. At card size
-                    // the difference between a drift and a jump is entirely
-                    // duration; anything quick reads as the image snapping
-                    // toward you.
-                    "transition-transform duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)]",
-                    "[@media(hover:hover)]:group-hover:scale-[1.04]",
+                    // Same duration and curve as the lift above. The photo
+                    // travels further than the card does, which is where the
+                    // sense of depth comes from — not from taking longer.
+                    "transition-transform duration-(--duration-slow) ease-(--ease-out)",
+                    "[@media(hover:hover)]:group-hover:scale-[1.05]",
                     soldOut && "opacity-55 saturate-50",
                   )}
                 />
@@ -158,7 +179,7 @@ export function ProductCard({
                 className={cn(
                   "pointer-events-none absolute inset-0",
                   "bg-gradient-to-t from-black/20 via-transparent to-transparent",
-                  "opacity-70 transition-opacity duration-[--duration-base]",
+                  "opacity-70 transition-opacity duration-(--duration-slow) ease-(--ease-out)",
                   "[@media(hover:hover)]:group-hover:opacity-100",
                 )}
               />
@@ -188,7 +209,7 @@ export function ProductCard({
           <div
             className={cn(
               "absolute top-2.5 right-2.5 flex flex-col gap-1.5",
-              "transition-[opacity,transform] duration-[--duration-base] ease-[--ease-out]",
+              "transition-[opacity,transform] duration-(--duration-base) ease-(--ease-out)",
               "[@media(hover:hover)]:-translate-y-2 [@media(hover:hover)]:opacity-0",
               "[@media(hover:hover)]:group-hover:translate-y-0 [@media(hover:hover)]:group-hover:opacity-100",
               "[@media(hover:hover)]:group-focus-within:translate-y-0 [@media(hover:hover)]:group-focus-within:opacity-100",
@@ -235,7 +256,7 @@ export function ProductCard({
             prefetch
             className={cn(
               "line-clamp-2 font-medium text-[0.9375rem] leading-snug",
-              "outline-none transition-colors duration-[--duration-fast]",
+              "outline-none transition-colors duration-(--duration-fast)",
               "[@media(hover:hover)]:group-hover:text-accent-text",
               "focus-visible:underline focus-visible:decoration-2 focus-visible:underline-offset-2",
             )}

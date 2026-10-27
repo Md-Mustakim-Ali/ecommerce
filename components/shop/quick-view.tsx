@@ -66,7 +66,7 @@ export function QuickView({
         title="Quick view"
         className={cn(
           "grid size-9 place-items-center rounded-full bg-surface-1/85 text-secondary-text backdrop-blur",
-          "touch-manipulation transition-all hover:text-primary-text active:scale-[0.88]",
+          "touch-manipulation transition-[color,transform,background-color] duration-(--duration-fast) ease-(--ease-out) hover:text-primary-text active:scale-[0.88] active:duration-(--duration-instant)",
           className,
         )}
       >
@@ -74,10 +74,16 @@ export function QuickView({
       </Dialog.Trigger>
 
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/55 backdrop-blur-sm" />
+        <Dialog.Backdrop className="motion-backdrop fixed inset-0 z-40 bg-black/55 backdrop-blur-sm" />
 
         <Dialog.Popup
           className={cn(
+            // motion-popup fades and scales it from 0.96. The centring
+            // translate is untouched by it: Tailwind 4 emits translate and
+            // scale as separate CSS properties rather than as parts of one
+            // transform string, so the two cannot overwrite each other the way
+            // they would have had to before.
+            "motion-popup",
             "-translate-x-1/2 -translate-y-1/2 fixed top-1/2 left-1/2 z-50",
             "w-[min(60rem,94vw)] rounded-2xl bg-surface-1 shadow-e4 outline-none",
             // Capped rather than fitted to the content, and the panel itself

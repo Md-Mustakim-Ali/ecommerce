@@ -128,7 +128,7 @@ export function ThemeToggle({
             title={LABELS[option]}
             className={cn(
               "grid size-8 cursor-pointer place-items-center rounded-full",
-              "transition-[background-color,color,transform] duration-[--duration-fast] ease-[--ease-out]",
+              "transition-[background-color,color,transform] duration-(--duration-fast) ease-(--ease-out)",
               "touch-manipulation active:scale-[0.92]",
               "has-focus-visible:outline has-focus-visible:outline-2 has-focus-visible:outline-ring has-focus-visible:outline-offset-2",
               selected

@@ -76,7 +76,7 @@ export function QuickAdd({
       }
       className={cn(
         "inline-flex h-9 items-center justify-center gap-1.5 rounded-control px-3 font-medium text-xs",
-        "touch-manipulation transition-all active:scale-[0.94]",
+        "touch-manipulation transition-[background-color,color,transform] duration-(--duration-fast) ease-(--ease-out) active:scale-[0.94] active:duration-(--duration-instant)",
         soldOut
           ? "cursor-not-allowed bg-surface-2 text-tertiary-text"
           : "bg-accent text-on-accent shadow-e1 hover:bg-accent-hover",

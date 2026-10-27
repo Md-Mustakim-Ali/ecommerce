@@ -130,7 +130,7 @@ export function ProductGallery({
               aria-label={`Image ${index + 1}`}
               onClick={() => emblaApi?.scrollTo(index)}
               className={cn(
-                "relative size-16 overflow-hidden rounded-md bg-surface-sunken transition-all",
+                "relative size-16 overflow-hidden rounded-md bg-surface-sunken transition-[opacity,box-shadow,transform] duration-(--duration-fast) ease-(--ease-out)",
                 "touch-manipulation active:scale-[0.94]",
                 index === selected
                   ? "ring-2 ring-ring ring-offset-2 ring-offset-surface-0"

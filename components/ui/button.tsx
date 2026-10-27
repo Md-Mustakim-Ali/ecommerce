@@ -21,7 +21,7 @@ const buttonVariants = cva(
     "group/button relative inline-flex shrink-0 select-none items-center justify-center gap-2",
     "whitespace-nowrap rounded-control border border-transparent bg-clip-padding",
     "font-medium text-sm outline-none",
-    "transition-[transform,background-color,box-shadow,color] duration-[--duration-fast] ease-[--ease-out]",
+    "transition-[transform,background-color,box-shadow,color] duration-(--duration-fast) ease-(--ease-out)",
     "active:scale-[0.97]",
     "disabled:pointer-events-none disabled:opacity-50",
     "aria-invalid:border-critical aria-invalid:ring-3 aria-invalid:ring-critical/20",
