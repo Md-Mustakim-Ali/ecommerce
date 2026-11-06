@@ -24,20 +24,6 @@
    renders the correct theme on the first byte.
 --------------------------------------------------------------------------- */
 
-/* Registered so the browser can interpolate them. An unregistered custom
-   property is a string and jumps between values instead of animating. */
-@property --px {
-  syntax: "<number>";
-  initial-value: 0;
-  inherits: false;
-}
-
-@property --py {
-  syntax: "<number>";
-  initial-value: 0;
-  inherits: false;
-}
-
 @custom-variant dark {
   &:where(html.dark, html.dark *) {
     @slot;
@@ -596,9 +582,9 @@ html.dark {
 
 /* Custom classes live in @layer components, not @layer utilities.
    Tailwind 4 treats @layer utilities as its own generated space and strips
-   handwritten rules from it — .pointer-surface silently produced no transform
-   at all until this moved. The components layer also sits below utilities in
-   the cascade, so a Tailwind utility can still override any of these. */
+   handwritten rules from it — the classes below silently produced nothing at
+   all until this moved. The components layer also sits below utilities in the
+   cascade, so a Tailwind utility can still override any of these. */
 @layer components {
   /* Pointer-reactive elevation.
 
@@ -815,73 +801,6 @@ html.dark {
     }
   }
 
-  /* ---------------------------------------------------------------------
-     Pointer-reactive surfaces
-     ---------------------------------------------------------------------
-     --px / --py are written by components/motion/pointer-surface.tsx as
-     normalised -1..1 values. Registering them with @property lets the browser
-     interpolate them smoothly instead of snapping between values.
-
-     Only transform and opacity are driven from them, so this stays on the
-     compositor.
-  --------------------------------------------------------------------- */
-
-  .pointer-surface {
-    --px: 0;
-    --py: 0;
-    transform: perspective(60rem) rotateX(calc(var(--py) * -2.2deg))
-      rotateY(calc(var(--px) * 2.2deg));
-    transition: transform var(--duration-slow) var(--ease-out);
-  }
-
-  /* The shadow leans away from the pointer, as though lit from that side. */
-  .pointer-surface::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: var(--elevation-3);
-    opacity: 0;
-    transform: translate3d(
-      calc(var(--px) * -0.5rem),
-      calc(var(--py) * -0.5rem),
-      0
-    );
-    transition:
-      opacity var(--duration-base) var(--ease-out),
-      transform var(--duration-slow) var(--ease-out);
-    pointer-events: none;
-  }
-
-  @media (hover: hover) {
-    .pointer-surface:hover::after {
-      opacity: 1;
-    }
-  }
-
-  /* A specular highlight that follows the pointer across the surface. This is
-     what sells "material" rather than "rectangle with a shadow". */
-  .sheen::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: radial-gradient(
-      18rem circle at calc(50% + var(--px) * 50%) calc(50% + var(--py) * 50%),
-      oklch(1 0 0 / 0.14),
-      transparent 60%
-    );
-    opacity: 0;
-    transition: opacity var(--duration-base) var(--ease-out);
-    pointer-events: none;
-  }
-
-  @media (hover: hover) {
-    .sheen:hover::before {
-      opacity: 1;
-    }
-  }
-
   /* Loading shimmer. A gradient swept across the block by transform, so the
      whole animation stays on the compositor — an opacity pulse on the element
      itself repaints every skeleton on the page every frame, which is exactly
@@ -925,15 +844,6 @@ html.dark {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pointer-surface {
-    transform: none;
-  }
-
-  .pointer-surface::after,
-  .sheen::before {
-    display: none;
-  }
-
   /* The skeleton still needs to read as "loading", so it stays visible and
      simply stops sweeping. Hiding it entirely would leave a blank page. */
   .shimmer::after {

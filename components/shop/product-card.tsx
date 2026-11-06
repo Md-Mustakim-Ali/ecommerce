@@ -18,21 +18,22 @@ import { cn } from "@/lib/utils";
  *
  * ── Why the hover is built this way ──────────────────────────────────────
  *
- * The card used to be wrapped in PointerSurface, which tilts it in 3D and
- * paints a specular highlight that tracks the pointer. Neither ever ran here,
- * and the reason is worth recording: the grid also puts `.scroll-settle` on
- * that same element, and that is a scroll-driven animation on `transform`. A
- * running animation beats a plain declaration in the cascade, so the tilt was
- * overwritten on every card, permanently.
+ * The card used to be wrapped in a PointerSurface component, which tilted it
+ * in 3D and painted a specular highlight that tracked the pointer. Neither
+ * ever ran here, and the reason is worth recording: the grid also puts
+ * `.scroll-settle` on that same element, and that is a scroll-driven animation
+ * on `transform`. A running animation beats a plain declaration in the
+ * cascade, so the tilt was overwritten on every card, permanently.
  *
- * What survived was the sheen, because it lives on a pseudo-element and so was
+ * What survived was the sheen, because it lived on a pseudo-element and so was
  * not overwritten — a white radial blob sitting dead centre over the card for
  * as long as the pointer was anywhere on it. The card appeared to have no
  * motion and one static smudge, which is exactly what it had.
  *
- * The tilt and the sheen are gone. A 3D tilt across twenty-four cards is the
- * wrong instrument regardless: it draws the eye to the container rather than
- * the product, and twenty-four of them tilting is a novelty, not a shop.
+ * That component and its CSS have since been deleted outright. A 3D tilt
+ * across twenty-four cards is the wrong instrument regardless: it draws the
+ * eye to the container rather than the product, and twenty-four of them
+ * tilting is a novelty, not a shop.
  *
  * What replaced it is quiet, and lives on the inner <article>, which nothing
  * else animates — so the two systems cannot collide again.
