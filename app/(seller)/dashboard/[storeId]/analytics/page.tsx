@@ -40,6 +40,7 @@ import {
 import { requireStorePermission } from "@/lib/auth/access";
 import { db } from "@/lib/db";
 import { stores } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import {
   concentrationLabel,
@@ -263,7 +264,7 @@ export default async function StoreAnalyticsPage({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Revenue"
-          value={formatMoney(totalRevenue, "USD")}
+          value={formatMoney(totalRevenue, PLATFORM_CURRENCY)}
           delta={
             periodDelta === null
               ? null
@@ -273,10 +274,10 @@ export default async function StoreAnalyticsPage({
         />
         <StatTile
           label="Average order value"
-          value={formatMoney(Math.round(aov.estimate), "USD")}
+          value={formatMoney(Math.round(aov.estimate), PLATFORM_CURRENCY)}
           interval={
             Number.isFinite(aov.low)
-              ? `${formatMoney(Math.round(aov.low), "USD")} – ${formatMoney(Math.round(aov.high), "USD")}`
+              ? `${formatMoney(Math.round(aov.low), PLATFORM_CURRENCY)} – ${formatMoney(Math.round(aov.high), PLATFORM_CURRENCY)}`
               : null
           }
           hint={`from ${orderValues.length} orders`}
@@ -319,13 +320,13 @@ export default async function StoreAnalyticsPage({
             <div className="flex flex-col">
               <dt className="text-muted-foreground">Next 7 days</dt>
               <dd className="font-medium tabular-nums">
-                {formatMoney(Math.round(forecastNext7), "USD")}
+                {formatMoney(Math.round(forecastNext7), PLATFORM_CURRENCY)}
               </dd>
             </div>
             <div className="flex flex-col">
               <dt className="text-muted-foreground">Trend</dt>
               <dd className="font-medium tabular-nums">
-                {formatMoney(Math.round(trend.slope), "USD")}/day
+                {formatMoney(Math.round(trend.slope), PLATFORM_CURRENCY)}/day
                 <span className="ml-1.5 font-normal text-muted-foreground">
                   {trend.pValue < 0.05
                     ? `significant (p=${trend.pValue.toFixed(3)})`
@@ -383,7 +384,7 @@ export default async function StoreAnalyticsPage({
                         { month: "short", day: "numeric" },
                       )}{" "}
                       {anomaly.direction === "high" ? "▲" : "▼"}{" "}
-                      {formatMoney(anomaly.value, "USD")}
+                      {formatMoney(anomaly.value, PLATFORM_CURRENCY)}
                     </Badge>
                   </li>
                 ))}

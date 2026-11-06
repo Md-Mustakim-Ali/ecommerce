@@ -22,6 +22,21 @@ export const orderStatus = pgEnum("order_status", [
   "fulfilled",
   "cancelled",
   "refunded",
+  /**
+   * A confirmed payment was later un-matched by the payment verifier.
+   *
+   * Distinct from `refunded`, and the distinction is not pedantry. A refund
+   * means the buyer had the goods and we gave the money back; a reversal means
+   * the money was never really there — Jomma matched an incoming Send Money
+   * message to this order and subsequently withdrew that match. Collapsing the
+   * two would tell a seller they refunded a customer they never got paid by,
+   * and would put a fictional refund in the platform's revenue reporting.
+   *
+   * Only reachable from the reversal path in lib/money/ledger.ts, which also
+   * writes the negative ledger entries that unwind the sale and its
+   * commission.
+   */
+  "payment_reversed",
 ]);
 
 export const subOrderStatus = pgEnum("sub_order_status", [

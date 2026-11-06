@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AddToCart } from "@/components/shop/add-to-cart";
 import { Badge } from "@/components/ui/badge";
 import { type StockDisplay, stockMessage } from "@/lib/catalog/stock";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +52,7 @@ export type PickerVariant = {
 export function OptionPicker({
   attributes,
   variants,
-  currency = "USD",
+  currency = PLATFORM_CURRENCY,
   stockDisplay = "when_low",
   lowStockThreshold = 5,
   onSelectionChange,

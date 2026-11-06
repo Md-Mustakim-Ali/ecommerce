@@ -12,6 +12,7 @@ import {
   setCartQuantityAction,
 } from "@/lib/actions/cart";
 import type { CartSummary } from "@/lib/cart";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 
 /**
@@ -67,7 +68,7 @@ export function CartDrawer({ trigger }: { trigger: React.ReactNode }) {
     });
   }
 
-  const currency = "USD";
+  const currency = PLATFORM_CURRENCY;
 
   return (
     <Drawer.Root open={open} onOpenChange={setOpen} direction="right">

@@ -11,6 +11,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@jomma/sdk':
+        specifier: ^1.4.5
+        version: 1.4.5
       '@tanstack/react-virtual':
         specifier: ^3.14.10
         version: 3.14.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1120,6 +1123,10 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [win32]
+
+  '@jomma/sdk@1.4.5':
+    resolution: {integrity: sha512-GoXLIZAqsIHqVutyo8qcZntvUwsJrZb1km+zF/RtUxnbwNYCZtdl26tuah5DE3N2zmdTFhDC6AYs2Y2BqWOlkw==}
+    engines: {node: '>=20'}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -4459,6 +4466,8 @@ snapshots:
 
   '@img/sharp-win32-x64@0.35.4':
     optional: true
+
+  '@jomma/sdk@1.4.5': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

@@ -8,6 +8,7 @@ import { SaveButton } from "@/components/shop/save-button";
 import { Badge } from "@/components/ui/badge";
 import type { ProductListItem } from "@/lib/catalog/queries";
 import { cardStockMessage } from "@/lib/catalog/stock";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { productMorphName } from "@/lib/motion/transition-name";
 import { cn } from "@/lib/utils";
@@ -290,11 +291,11 @@ export function ProductCard({
           <div className="mt-auto flex flex-col gap-2.5 pt-2">
             <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="tabular font-semibold text-base leading-none">
-                {formatMoney(product.priceCents, "USD")}
+                {formatMoney(product.priceCents, PLATFORM_CURRENCY)}
                 {hasRange ? (
                   <span className="font-normal text-secondary-text">
                     {" – "}
-                    {formatMoney(product.maxPriceCents, "USD")}
+                    {formatMoney(product.maxPriceCents, PLATFORM_CURRENCY)}
                   </span>
                 ) : null}
               </span>
@@ -306,10 +307,10 @@ export function ProductCard({
               */}
               {onSale && product.compareAtCents !== null ? (
                 <span className="tabular text-tertiary-text text-xs line-through">
-                  {formatMoney(product.compareAtCents, "USD")}
+                  {formatMoney(product.compareAtCents, PLATFORM_CURRENCY)}
                   {product.compareAtMaxCents !== null &&
                   product.compareAtMaxCents > product.compareAtCents
-                    ? ` – ${formatMoney(product.compareAtMaxCents, "USD")}`
+                    ? ` – ${formatMoney(product.compareAtMaxCents, PLATFORM_CURRENCY)}`
                     : ""}
                 </span>
               ) : null}

@@ -1,0 +1,323 @@
+import { constructEvent, signPayload } from "@jomma/sdk";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * The webhook route's own logic: idempotency, and which events move money.
+ *
+ * Everything below the route is mocked, deliberately. The guarantees that live
+ * in Postgres — the primary key on jomma_webhook_events, the SELECT ... FOR
+ * UPDATE in recordOrderPaid, the unique index on ledger idempotency keys — are
+ * the database's to keep and are exercised by the verify scripts against a real
+ * instance. What is mocked out here is exactly what is *not* being tested.
+ *
+ * What IS tested is the part I wrote and could get wrong: that the event id is
+ * claimed BEFORE any handler runs, that a replay short-circuits on that claim,
+ * and that each event type does the one thing it should.
+ */
+
+const SECRET = "whsec_test_only_never_a_real_secret";
+const ORDER_ID = "11111111-1111-4111-8111-111111111111";
+
+/** Event ids this fake database has already seen. Stands in for the PK. */
+const seenEvents = new Set<string>();
+
+type FakeOrder = {
+  id: string;
+  status: string;
+  totalCents: number;
+  orderNumber: string;
+};
+
+/** The order findOrder() will return, or null for "no matching order". */
+let currentOrder: FakeOrder | null = null;
+
+function makeOrder(overrides: Partial<FakeOrder> = {}): FakeOrder {
+  return {
+    id: ORDER_ID,
+    status: "pending",
+    totalCents: 75604,
+    orderNumber: "ORD-2026-000123",
+    ...overrides,
+  };
+}
+
+const recordOrderPaid = vi.fn(async () => ({ recorded: true, entries: 2 }));
+const recordOrderReversed = vi.fn(async () => ({ recorded: true, entries: 2 }));
+const sendOrderConfirmation = vi.fn(async () => {});
+const releaseOrderStock = vi.fn(async () => ({ released: true }));
+
+vi.mock("@/lib/db", () => {
+  const insert = () => ({
+    values: (row: { id: string }) => ({
+      onConflictDoNothing: () => ({
+        // The whole point: an id already present returns no rows, which is
+        // what the route reads as "already delivered".
+        returning: async () => {
+          if (seenEvents.has(row.id)) return [];
+          seenEvents.add(row.id);
+          return [{ id: row.id }];
+        },
+      }),
+    }),
+  });
+
+  const update = () => ({
+    set: () => ({ where: async () => undefined }),
+  });
+
+  const select = () => ({
+    from: () => ({
+      where: () => ({
+        limit: async () => (currentOrder ? [currentOrder] : []),
+      }),
+    }),
+  });
+
+  return { db: { insert, update, select } };
+});
+
+vi.mock("@/lib/money/ledger", () => ({ recordOrderPaid, recordOrderReversed }));
+vi.mock("@/lib/email/notify", () => ({ sendOrderConfirmation }));
+vi.mock("@/lib/payments/jomma/release", () => ({ releaseOrderStock }));
+
+// The signature check is NOT mocked — the route runs the real constructEvent,
+// so these tests would also catch verification being bypassed.
+vi.mock("@/lib/payments/jomma/client", () => ({
+  jomma: () => ({ webhooks: { construct: constructEvent } }),
+  jommaWebhookSecret: () => SECRET,
+  jommaConfigured: () => true,
+}));
+
+const { POST } = await import("@/app/api/webhooks/jomma/route");
+
+function deliver(
+  event: Record<string, unknown>,
+  options: { signature?: string | null } = {},
+) {
+  const raw = JSON.stringify(event);
+  const signature =
+    options.signature === undefined
+      ? signPayload(raw, SECRET)
+      : options.signature;
+
+  return POST(
+    new Request("https://shop.example.com/api/webhooks/jomma", {
+      method: "POST",
+      body: raw,
+      headers: signature ? { "x-jomma-signature": signature } : {},
+    }),
+  );
+}
+
+function paymentEvent(
+  id: string,
+  type: string,
+  data: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    type,
+    created_at: new Date().toISOString(),
+    data: {
+      intent_id: "int_test_1",
+      client_reference: ORDER_ID,
+      amount: 75604,
+      received_amount: 75604,
+      trx_id: "TRX123",
+      sender_msisdn: "8801700000000",
+      ...data,
+    },
+  };
+}
+
+beforeEach(() => {
+  seenEvents.clear();
+  vi.clearAllMocks();
+  currentOrder = makeOrder();
+});
+
+describe("jomma webhook handler", () => {
+  it("marks an order paid on payment.succeeded", async () => {
+    const response = await deliver(paymentEvent("evt_1", "payment.succeeded"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      received: true,
+      handled: true,
+    });
+    expect(recordOrderPaid).toHaveBeenCalledTimes(1);
+    expect(recordOrderPaid).toHaveBeenCalledWith(expect.anything(), {
+      orderId: ORDER_ID,
+      paymentIntentId: "int_test_1",
+    });
+    expect(sendOrderConfirmation).toHaveBeenCalledTimes(1);
+  });
+
+  it("is idempotent when the same event is redelivered", async () => {
+    const event = paymentEvent("evt_replay", "payment.succeeded");
+
+    const first = await deliver(event);
+    const second = await deliver(event);
+    const third = await deliver(event);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(200);
+
+    // 200 on the replays, so Jomma stops retrying rather than backing off.
+    expect(await second.json()).toMatchObject({
+      received: true,
+      duplicate: true,
+    });
+
+    // The actual money-safety property: one delivery, one credit, one receipt.
+    // Three deliveries of one payment must not ship twice or count revenue
+    // twice.
+    expect(recordOrderPaid).toHaveBeenCalledTimes(1);
+    expect(sendOrderConfirmation).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats two different events for one order as two events", async () => {
+    // The dedupe key is the event id, not the order — a partial payment
+    // followed by the balance is two real events on one order and both must
+    // run.
+    await deliver(
+      paymentEvent("evt_a", "payment.partial", {
+        received_amount: 50000,
+        shortfall: 25604,
+      }),
+    );
+    await deliver(paymentEvent("evt_b", "payment.succeeded"));
+
+    expect(recordOrderPaid).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a forged signature before touching the database", async () => {
+    const response = await deliver(
+      paymentEvent("evt_forged", "payment.succeeded"),
+      {
+        signature: signPayload(
+          JSON.stringify(paymentEvent("evt_forged", "payment.succeeded")),
+          "whsec_wrong",
+        ),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(recordOrderPaid).not.toHaveBeenCalled();
+    // Nothing was recorded, so a later genuine delivery of this id still works.
+    expect(seenEvents.size).toBe(0);
+  });
+
+  it("rejects a missing signature", async () => {
+    const response = await deliver(
+      paymentEvent("evt_nosig", "payment.succeeded"),
+      {
+        signature: null,
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(recordOrderPaid).not.toHaveBeenCalled();
+  });
+
+  it("does not fulfil on payment.partial", async () => {
+    const response = await deliver(
+      paymentEvent("evt_partial", "payment.partial", {
+        received_amount: 50000,
+        shortfall: 25604,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(recordOrderPaid).not.toHaveBeenCalled();
+    expect(sendOrderConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("fulfils on payment.overpaid and flags the excess", async () => {
+    const response = await deliver(
+      paymentEvent("evt_over", "payment.overpaid", {
+        received_amount: 80000,
+        excess: 4396,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      reason: "overpaid, refund owed",
+    });
+    expect(recordOrderPaid).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to fulfil when the amount does not match the order", async () => {
+    // The check that catches a bug in our own amount handling before it
+    // becomes a shipped parcel.
+    const response = await deliver(
+      paymentEvent("evt_mismatch", "payment.succeeded", { received_amount: 1 }),
+    );
+
+    expect(await response.json()).toMatchObject({
+      handled: false,
+      reason: "amount mismatch",
+    });
+    expect(recordOrderPaid).not.toHaveBeenCalled();
+  });
+
+  it("un-fulfils on payment.reversed", async () => {
+    currentOrder = makeOrder({ status: "paid" });
+
+    const response = await deliver(
+      paymentEvent("evt_rev", "payment.reversed", {
+        reason: "sender disputed",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(recordOrderReversed).toHaveBeenCalledWith(expect.anything(), {
+      orderId: ORDER_ID,
+      reason: "sender disputed",
+      eventId: "evt_rev",
+    });
+  });
+
+  it("releases stock on payment.expired, but only while pending", async () => {
+    await deliver(paymentEvent("evt_exp", "payment.expired"));
+    expect(releaseOrderStock).toHaveBeenCalledWith(ORDER_ID, "expired");
+
+    // A paid order must never be unwound by a stale expiry arriving late.
+    vi.clearAllMocks();
+    currentOrder = makeOrder({ status: "paid" });
+    const response = await deliver(paymentEvent("evt_exp2", "payment.expired"));
+
+    expect(releaseOrderStock).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ handled: false });
+  });
+
+  it("logs account events without touching any order", async () => {
+    const response = await deliver({
+      id: "evt_acct",
+      type: "account.degraded",
+      created_at: new Date().toISOString(),
+      data: { provider: "bkash", msisdn: "8801700000000" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(recordOrderPaid).not.toHaveBeenCalled();
+    expect(releaseOrderStock).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges an event for an order it cannot find", async () => {
+    currentOrder = null;
+
+    const response = await deliver(
+      paymentEvent("evt_orphan", "payment.succeeded"),
+    );
+
+    // 200, not 404 — retrying an order we do not have will never resolve.
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      handled: false,
+      reason: "no matching order",
+    });
+  });
+});

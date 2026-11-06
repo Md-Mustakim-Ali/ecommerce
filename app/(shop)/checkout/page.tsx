@@ -7,6 +7,7 @@ import { getSession } from "@/lib/auth/guards";
 import { getCart } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { addresses } from "@/lib/db/schema";
+import { jommaConfigured } from "@/lib/payments/jomma/client";
 import { getPlatformSettings, shippingFor } from "@/lib/settings";
 import { CheckoutForm } from "./checkout-form";
 
@@ -58,6 +59,11 @@ export default async function CheckoutPage() {
       <CheckoutForm
         cart={cart}
         shippingCents={shippingCents}
+        // Read on the server. The form must not decide this for itself: the
+        // check reads JOMMA_* environment variables, which never reach the
+        // browser, and offering a method that cannot start is worse than not
+        // offering it.
+        jommaAvailable={jommaConfigured()}
         defaultEmail={session?.user.email ?? ""}
         defaultAddress={
           defaultAddress

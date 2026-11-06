@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef } from "react";
 import { Badge } from "@/components/ui/badge";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 
 export type ProductRow = {
@@ -135,8 +136,8 @@ function Row({
   const badge = STATUS_BADGE[row.status];
   const priceRange =
     row.minPriceCents === row.maxPriceCents
-      ? formatMoney(row.minPriceCents, "USD")
-      : `${formatMoney(row.minPriceCents, "USD")} – ${formatMoney(row.maxPriceCents, "USD")}`;
+      ? formatMoney(row.minPriceCents, PLATFORM_CURRENCY)
+      : `${formatMoney(row.minPriceCents, PLATFORM_CURRENCY)} – ${formatMoney(row.maxPriceCents, PLATFORM_CURRENCY)}`;
 
   return (
     <Link

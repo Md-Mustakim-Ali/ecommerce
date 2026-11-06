@@ -32,6 +32,7 @@ import {
   storePerformance,
 } from "@/lib/analytics/queries";
 import { requirePlatformPermission } from "@/lib/auth/access";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import {
   concentrationLabel,
@@ -211,7 +212,7 @@ export default async function AdminAnalyticsPage({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="GMV"
-          value={formatMoney(gmv, "USD")}
+          value={formatMoney(gmv, PLATFORM_CURRENCY)}
           delta={
             periodDelta === null
               ? null
@@ -221,7 +222,7 @@ export default async function AdminAnalyticsPage({
         />
         <StatTile
           label="Commission"
-          value={formatMoney(commission, "USD")}
+          value={formatMoney(commission, PLATFORM_CURRENCY)}
           hint={`${pct(takeRate, 2)} take rate`}
         />
         <StatTile
@@ -256,13 +257,13 @@ export default async function AdminAnalyticsPage({
             <div className="flex flex-col">
               <dt className="text-muted-foreground">Next 7 days</dt>
               <dd className="font-medium tabular-nums">
-                {formatMoney(Math.round(forecastNext7), "USD")}
+                {formatMoney(Math.round(forecastNext7), PLATFORM_CURRENCY)}
               </dd>
             </div>
             <div className="flex flex-col">
               <dt className="text-muted-foreground">Trend</dt>
               <dd className="font-medium tabular-nums">
-                {formatMoney(Math.round(trend.slope), "USD")}/day
+                {formatMoney(Math.round(trend.slope), PLATFORM_CURRENCY)}/day
                 <span className="ml-1.5 font-normal text-muted-foreground">
                   {trend.pValue < 0.05
                     ? `p=${trend.pValue.toFixed(3)}`
@@ -386,7 +387,7 @@ export default async function AdminAnalyticsPage({
                         {statusTotal === 0 ? "—" : pct(row.count / statusTotal)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMoney(row.grossCents, "USD")}
+                        {formatMoney(row.grossCents, PLATFORM_CURRENCY)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -429,13 +430,13 @@ export default async function AdminAnalyticsPage({
                     </Link>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMoney(store.revenueCents, "USD")}
+                    {formatMoney(store.revenueCents, PLATFORM_CURRENCY)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {pct(store.share)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMoney(store.commissionCents, "USD")}
+                    {formatMoney(store.commissionCents, PLATFORM_CURRENCY)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {store.orders}

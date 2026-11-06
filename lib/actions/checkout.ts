@@ -8,8 +8,13 @@ import { getCart, getOrCreateCartId } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
 import { resolveDiscountForCart } from "@/lib/discounts/resolve";
+import { env } from "@/lib/env";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { placeOrder } from "@/lib/orders/create";
 import { paymentProvider } from "@/lib/payments";
+import { jommaConfigured } from "@/lib/payments/jomma/client";
+import { startPayment } from "@/lib/payments/jomma/intents";
+import { paymentMethods } from "@/lib/payments/methods";
 import { callerKey, checkRateLimit } from "@/lib/ratelimit";
 import { getPlatformSettings, shippingFor } from "@/lib/settings";
 
@@ -41,6 +46,7 @@ const checkoutSchema = z.object({
   shippingAddress: addressSchema,
   /** Optional. Re-evaluated here; the browser's figure is never trusted. */
   discountCode: z.string().trim().max(60).optional(),
+  paymentMethod: z.enum(paymentMethods).default("manual"),
 });
 
 export type CheckoutResult =
@@ -54,7 +60,7 @@ export type CheckoutResult =
     }
   | { ok: false; message: string };
 
-const CURRENCY = "USD";
+const CURRENCY = PLATFORM_CURRENCY;
 
 export async function placeOrderAction(
   input: z.input<typeof checkoutSchema>,
@@ -137,6 +143,68 @@ export async function placeOrderAction(
 
   if (!result.ok) return { ok: false, message: result.message };
 
+  // ── bKash / Nagad, via Jomma ───────────────────────────────────────────
+  //
+  // A separate branch rather than another PaymentProvider adapter, and that is
+  // a deliberate call. The port in lib/payments/provider.ts models a processor
+  // that moves money: it has refund(), and its webhook vocabulary is
+  // succeeded/failed/refunded. Jomma moves nothing — it watches a phone and
+  // reports what it saw — so it has no refund rails at all, and three of its
+  // six payment events (partial, overpaid, reversed) have nowhere to go in
+  // that vocabulary. Implementing refund() against it would be a lie the type
+  // system would happily accept.
+  const method = parsed.data.paymentMethod;
+  if (method !== "manual") {
+    if (!jommaConfigured()) {
+      return {
+        ok: false,
+        message: "That payment method is not available right now.",
+      };
+    }
+
+    const started = await startPayment({
+      orderId: result.orderId,
+      orderNumber: result.orderNumber,
+      // Poisha. The platform currency is BDT and every *_cents column is
+      // already minor units, so this is a pass-through, not a conversion —
+      // which is the entire reason the shop was switched to BDT rather than
+      // converting per order.
+      amountMinorUnits: result.totalCents,
+      provider: method === "any" ? "any" : method,
+      // Automatic matching needs a declared sender; without one the buyer can
+      // only settle by typing a TrxID by hand. We pass the checkout phone when
+      // there is one and otherwise let the hosted page ask.
+      payerMsisdn: parsed.data.shippingAddress.phone?.trim() || null,
+      returnUrl: absoluteUrl(`/orders/${result.orderId}?awaiting=1`),
+      cancelUrl: absoluteUrl("/cart"),
+      attempt: 1,
+    });
+
+    if (!started.ok) {
+      // The order exists and is holding stock. Left pending on purpose: the
+      // buyer can retry from the order page, and Jomma's TTL releases it
+      // otherwise. Silently cancelling here would lose a recoverable sale.
+      return { ok: false, message: started.message };
+    }
+
+    await db
+      .update(orders)
+      .set({ paymentIntentId: started.intentId })
+      .where(eq(orders.id, result.orderId));
+
+    revalidatePath("/account/orders");
+
+    return {
+      ok: true,
+      orderId: result.orderId,
+      orderNumber: result.orderNumber,
+      redirectUrl: started.payUrl,
+      // Nothing about landing back on returnUrl means paid. Only the webhook
+      // moves this order, which is why the buyer lands on a waiting page.
+      settlesOffline: false,
+    };
+  }
+
   // The intent is created against a persisted order, so its id can be the
   // idempotency key — a retried checkout produces the same intent rather than
   // a second one.
@@ -164,4 +232,17 @@ export async function placeOrderAction(
     redirectUrl: intent.redirectUrl,
     settlesOffline: provider.settlesOffline,
   };
+}
+
+/**
+ * Absolute URLs for Jomma's redirects.
+ *
+ * They must be absolute — the hosted pay page is on another origin — and they
+ * are checked against the hostnames registered under Apps → Hosted checkout.
+ * An app with none registered gets no redirect at all rather than any redirect
+ * it asks for, so BETTER_AUTH_URL's host has to be registered there. See
+ * docs/jomma.md.
+ */
+function absoluteUrl(path: string): string {
+  return new URL(path, env.BETTER_AUTH_URL).toString();
 }

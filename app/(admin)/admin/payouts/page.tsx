@@ -4,6 +4,7 @@ import {
   storesOwedAction,
 } from "@/lib/actions/admin-stores";
 import { requirePlatformPermission } from "@/lib/auth/access";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { PayoutRun } from "./payout-run";
 
@@ -37,9 +38,9 @@ export default async function AdminPayoutsPage() {
       <div className="flex flex-col gap-1">
         <h1 className="font-semibold text-xl tracking-tight">Payouts</h1>
         <p className="text-muted-foreground text-sm">
-          {formatMoney(total, "USD")} owed across {payable.length}{" "}
+          {formatMoney(total, PLATFORM_CURRENCY)} owed across {payable.length}{" "}
           {payable.length === 1 ? "store" : "stores"} ·{" "}
-          {formatMoney(inFlight, "USD")} in flight
+          {formatMoney(inFlight, PLATFORM_CURRENCY)} in flight
         </p>
       </div>
 

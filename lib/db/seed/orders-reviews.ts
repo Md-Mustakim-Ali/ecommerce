@@ -9,6 +9,7 @@ import {
   reviews,
   subOrders,
 } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { buildOrderTotals } from "@/lib/money/order-math";
 
 /**
@@ -229,7 +230,7 @@ export async function seedOrdersAndReviews(
         subtotalCents: totals.subtotalCents,
         shippingCents: totals.shippingCents,
         totalCents: totals.totalCents,
-        currency: "USD",
+        currency: PLATFORM_CURRENCY,
         shippingAddress: {
           recipientName: "Seeded Buyer",
           line1: "12 Example Way",
@@ -310,7 +311,7 @@ export async function seedOrdersAndReviews(
           subOrderId,
           type: "sale",
           amountCents: BigInt(sub.subtotalCents + sub.shippingCents),
-          currency: "USD",
+          currency: PLATFORM_CURRENCY,
           description: `Sale on ${orderNumber}`,
           idempotencyKey: `sale:${subOrderId}`,
           createdAt: placedAt,
@@ -322,7 +323,7 @@ export async function seedOrdersAndReviews(
             subOrderId,
             type: "commission",
             amountCents: BigInt(-sub.commissionCents),
-            currency: "USD",
+            currency: PLATFORM_CURRENCY,
             description: `Commission on ${orderNumber}`,
             idempotencyKey: `commission:${subOrderId}`,
             createdAt: placedAt,
@@ -337,7 +338,7 @@ export async function seedOrdersAndReviews(
             subOrderId,
             type: "refund",
             amountCents: BigInt(-gross),
-            currency: "USD",
+            currency: PLATFORM_CURRENCY,
             description: `Refund on ${orderNumber}`,
             idempotencyKey: `refund:${subOrderId}`,
             createdAt: new Date(placedAt.getTime() + 5 * 86_400_000),
@@ -348,7 +349,7 @@ export async function seedOrdersAndReviews(
               subOrderId,
               type: "commission",
               amountCents: BigInt(sub.commissionCents),
-              currency: "USD",
+              currency: PLATFORM_CURRENCY,
               description: `Commission returned on ${orderNumber}`,
               idempotencyKey: `commission-refund:${subOrderId}`,
               createdAt: new Date(placedAt.getTime() + 5 * 86_400_000),

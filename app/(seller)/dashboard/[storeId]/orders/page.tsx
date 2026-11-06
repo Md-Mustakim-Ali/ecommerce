@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { requireStorePermission } from "@/lib/auth/access";
 import { db } from "@/lib/db";
 import { stores } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { listOrdersForStore } from "@/lib/orders/queries";
 import { OrderRow } from "./order-row";
@@ -77,8 +78,10 @@ export default async function StoreOrdersPage({
           <h1 className="font-semibold text-xl tracking-tight">Orders</h1>
           <p className="text-secondary-text text-sm">
             {store.name} · {orders.length} shown ·{" "}
-            <span className="tabular">{formatMoney(revenue, "USD")}</span> to
-            you
+            <span className="tabular">
+              {formatMoney(revenue, PLATFORM_CURRENCY)}
+            </span>{" "}
+            to you
           </p>
         </div>
         <Link

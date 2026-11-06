@@ -14,6 +14,7 @@ import {
   setDiscountStatusAction,
   updateDiscountAction,
 } from "@/lib/actions/discount-admin";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 
 type Scope = { scope: "platform" } | { scope: "store"; storeId: string };
@@ -123,11 +124,11 @@ function describe(discount: DiscountRow): string {
   if (discount.kind === "percentage") {
     const percent = discount.value / 100;
     const capped = discount.maxDiscountCents
-      ? `, up to ${formatMoney(discount.maxDiscountCents, "USD")}`
+      ? `, up to ${formatMoney(discount.maxDiscountCents, PLATFORM_CURRENCY)}`
       : "";
     return `${percent % 1 === 0 ? percent : percent.toFixed(2)}% off${capped}`;
   }
-  return `${formatMoney(discount.value, "USD")} off`;
+  return `${formatMoney(discount.value, PLATFORM_CURRENCY)} off`;
 }
 
 function DiscountRowView({
@@ -162,7 +163,7 @@ function DiscountRowView({
 
   const limits = [
     discount.minSubtotalCents > 0
-      ? `min ${formatMoney(discount.minSubtotalCents, "USD")}`
+      ? `min ${formatMoney(discount.minSubtotalCents, PLATFORM_CURRENCY)}`
       : null,
     discount.maxRedemptions
       ? `${discount.redemptionCount}/${discount.maxRedemptions} used`
@@ -203,7 +204,8 @@ function DiscountRowView({
           */}
           {discount.redeemedCents > 0 ? (
             <span className="text-tertiary-text text-xs">
-              {formatMoney(discount.redeemedCents, "USD")} given away
+              {formatMoney(discount.redeemedCents, PLATFORM_CURRENCY)} given
+              away
             </span>
           ) : null}
         </div>

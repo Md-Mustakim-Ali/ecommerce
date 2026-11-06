@@ -14,6 +14,7 @@ import {
 } from "@/lib/actions/fulfilment";
 import { requestRefundAction } from "@/lib/actions/refunds";
 import type { AddressSnapshot } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { OrderThread } from "./order-thread";
 
@@ -162,7 +163,7 @@ export function OrderRow({
         ) : null}
 
         <span className="tabular text-sm">
-          {formatMoney(order.payoutCents, "USD")}
+          {formatMoney(order.payoutCents, PLATFORM_CURRENCY)}
         </span>
         <Badge variant={badge.variant}>{badge.label}</Badge>
 
@@ -284,7 +285,7 @@ export function OrderRow({
                     </span>
                   </span>
                   <span className="tabular shrink-0 text-secondary-text">
-                    {formatMoney(item.lineTotalCents, "USD")}
+                    {formatMoney(item.lineTotalCents, PLATFORM_CURRENCY)}
                   </span>
                 </li>
               ))}
@@ -322,19 +323,19 @@ export function OrderRow({
             <div className="flex gap-2">
               <dt className="text-tertiary-text">Items</dt>
               <dd className="tabular">
-                {formatMoney(order.subtotalCents, "USD")}
+                {formatMoney(order.subtotalCents, PLATFORM_CURRENCY)}
               </dd>
             </div>
             <div className="flex gap-2">
               <dt className="text-tertiary-text">Shipping</dt>
               <dd className="tabular">
-                {formatMoney(order.shippingCents, "USD")}
+                {formatMoney(order.shippingCents, PLATFORM_CURRENCY)}
               </dd>
             </div>
             <div className="flex gap-2">
               <dt className="text-tertiary-text">Your payout</dt>
               <dd className="tabular font-medium">
-                {formatMoney(order.payoutCents, "USD")}
+                {formatMoney(order.payoutCents, PLATFORM_CURRENCY)}
               </dd>
             </div>
           </dl>

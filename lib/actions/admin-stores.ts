@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/email";
 import { payoutNotice } from "@/lib/email/templates";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { storeBalance } from "@/lib/money/ledger";
 
 /**
@@ -116,7 +117,7 @@ export async function setStoreStatusAction(
 
 const payoutSchema = z.object({
   storeId: z.uuid(),
-  currency: z.string().trim().length(3).default("USD"),
+  currency: z.string().trim().length(3).default(PLATFORM_CURRENCY),
   /**
    * What the admin saw when they pressed the button.
    *

@@ -1,4 +1,4 @@
-import { CheckCircle2, Package } from "lucide-react";
+import { CheckCircle2, Loader2, Package } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -30,8 +30,37 @@ export default async function OrderPage({
 
   const justPlaced = query.placed === "1";
 
+  /*
+    Where Jomma's hosted pay page sends the buyer back to.
+
+    It is a plain GET. Anybody can type it, including somebody who never paid,
+    so it is allowed to say only that we are looking — never that the order is
+    settled. `order.status` below is read from the database, which only the
+    verified webhook writes, so the moment the payment is real this banner is
+    replaced by the actual state rather than by this page's opinion of it.
+  */
+  const awaitingPayment = query.awaiting === "1" && order.status === "pending";
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6">
+      {awaitingPayment ? (
+        <div className="flex items-start gap-3 rounded-xl bg-surface-2 p-5">
+          <Loader2
+            className="mt-0.5 size-5 shrink-0 animate-spin text-secondary-text"
+            aria-hidden
+          />
+          <div className="flex flex-col gap-1">
+            <p className="font-medium">Checking for your payment</p>
+            <p className="text-secondary-text text-sm">
+              We are waiting for confirmation from bKash or Nagad. This usually
+              takes under a minute. You do not need to send anything again —
+              refresh this page, and we will email {order.email} the moment it
+              clears.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {justPlaced ? (
         <div className="flex items-start gap-3 rounded-xl bg-positive-muted p-5 text-positive">
           <CheckCircle2 className="mt-0.5 size-5 shrink-0" aria-hidden />

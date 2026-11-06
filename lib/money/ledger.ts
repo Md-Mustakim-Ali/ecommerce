@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@/lib/db";
 import { ledgerEntries, orders, subOrders } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 
 /**
  * Ledger writes.
@@ -191,7 +192,7 @@ export async function recordRefund(
           subOrderId: sub.id,
           type: "refund" as const,
           amountCents: BigInt(-input.amountCents),
-          currency: order?.currency ?? "USD",
+          currency: order?.currency ?? PLATFORM_CURRENCY,
           description: `Refund on ${order?.orderNumber ?? sub.orderId}: ${input.reason}`,
           idempotencyKey: `refund:${input.idempotencyKey}`,
         },
@@ -203,7 +204,7 @@ export async function recordRefund(
                 type: "commission" as const,
                 // Positive: returning the platform's cut to the seller.
                 amountCents: BigInt(commissionBack),
-                currency: order?.currency ?? "USD",
+                currency: order?.currency ?? PLATFORM_CURRENCY,
                 description: `Commission returned on ${order?.orderNumber ?? sub.orderId}`,
                 idempotencyKey: `commission-refund:${input.idempotencyKey}`,
               },
@@ -221,6 +222,118 @@ export async function recordRefund(
       .where(eq(subOrders.id, sub.id));
 
     return { recorded: true };
+  });
+}
+
+/**
+ * Unwinds a payment the verifier has withdrawn.
+ *
+ * ── What this is for, and why it is not a refund ─────────────────────────
+ *
+ * Jomma matches incoming bKash/Nagad Send Money messages to orders. A
+ * `payment.reversed` webhook means it has un-matched one it previously
+ * confirmed: the money we were told arrived did not, or was attributed to the
+ * wrong order. Nobody gave anything back, so calling it a refund would put a
+ * fiction in the seller's statement and in platform revenue.
+ *
+ * The ledger is append-only behind a database trigger, so this reverses by
+ * writing new negative entries rather than deleting the originals. That is
+ * deliberate: the audit trail should show that we believed we were paid, and
+ * then learned otherwise, because that sequence is exactly what somebody
+ * investigating a dispute needs to see.
+ *
+ * ── The one thing this cannot undo ───────────────────────────────────────
+ *
+ * If the seller already shipped, the goods are gone. This puts the money back
+ * where it belongs in the ledger and marks the order `payment_reversed` so the
+ * dashboards stop treating it as a sale, but recovering the item is a human
+ * problem. That is the honest boundary of an automated reversal.
+ */
+export async function recordOrderReversed(
+  db: Db,
+  input: { orderId: string; reason: string; eventId: string },
+): Promise<{ recorded: boolean; entries: number }> {
+  return db.transaction(async (tx) => {
+    const [order] = await tx
+      .select({
+        id: orders.id,
+        status: orders.status,
+        currency: orders.currency,
+        orderNumber: orders.orderNumber,
+      })
+      .from(orders)
+      .where(eq(orders.id, input.orderId))
+      .for("update");
+
+    if (!order) throw new Error(`Order ${input.orderId} not found`);
+
+    // Only a payment we actually recognised can be un-recognised. A reversal
+    // for an order still `pending` means the match never reached us in the
+    // first place, and there is nothing in the ledger to unwind.
+    if (order.status === "pending" || order.status === "payment_reversed") {
+      return { recorded: false, entries: 0 };
+    }
+
+    const subs = await tx
+      .select({
+        id: subOrders.id,
+        storeId: subOrders.storeId,
+        subtotalCents: subOrders.subtotalCents,
+        shippingCents: subOrders.shippingCents,
+        commissionCents: subOrders.commissionCents,
+      })
+      .from(subOrders)
+      .where(eq(subOrders.orderId, input.orderId));
+
+    const writes: LedgerWrite[] = [];
+
+    for (const sub of subs) {
+      // Exactly mirrors what recordOrderPaid credited, so the two sum to zero.
+      writes.push({
+        storeId: sub.storeId,
+        subOrderId: sub.id,
+        type: "adjustment",
+        amountCents: BigInt(-(sub.subtotalCents + sub.shippingCents)),
+        currency: order.currency,
+        description: `Payment reversed on ${order.orderNumber}: ${input.reason}`,
+        idempotencyKey: `reversal:${sub.id}`,
+      });
+
+      if (sub.commissionCents > 0) {
+        writes.push({
+          storeId: sub.storeId,
+          subOrderId: sub.id,
+          type: "adjustment",
+          // Positive: giving back the commission we debited for a sale that
+          // turned out not to have happened.
+          amountCents: BigInt(sub.commissionCents),
+          currency: order.currency,
+          description: `Commission reversed on ${order.orderNumber}`,
+          idempotencyKey: `commission-reversal:${sub.id}`,
+        });
+      }
+    }
+
+    if (writes.length > 0) {
+      await tx
+        .insert(ledgerEntries)
+        .values(writes)
+        .onConflictDoNothing({ target: ledgerEntries.idempotencyKey });
+    }
+
+    await tx
+      .update(orders)
+      .set({ status: "payment_reversed" })
+      .where(eq(orders.id, input.orderId));
+
+    // Cancelled rather than refunded, for the same reason the order is not
+    // `refunded`: no money went back to anybody.
+    await tx
+      .update(subOrders)
+      .set({ status: "cancelled" })
+      .where(eq(subOrders.orderId, input.orderId));
+
+    return { recorded: true, entries: writes.length };
   });
 }
 

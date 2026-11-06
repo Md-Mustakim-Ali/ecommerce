@@ -28,6 +28,24 @@ const envSchema = z.object({
 
   /** Written into every structured log line, so environments are separable. */
   APP_ENV: z.enum(["development", "preview", "production"]).optional(),
+
+  // -- Jomma (bKash / Nagad settlement verification) ------------------------
+  //
+  // Optional here, asserted hard in lib/payments/jomma/client.ts. The split is
+  // deliberate: making them required would stop the app booting for anyone
+  // running it without a Jomma instance — CI, a contributor, the seed script —
+  // even though nothing outside the bKash path touches them. The client module
+  // throws at import if they are missing, so the assertion still happens at
+  // startup for every process that can actually take a payment.
+  //
+  // JOMMA_URL is url() rather than string(). The SDK's baseUrl is the single
+  // most dangerous field in this integration to get wrong: the documented
+  // failure is that it silently falls back to a default host and every call
+  // fails looking like a network fault rather than a misconfiguration.
+  JOMMA_URL: z.url().optional(),
+  JOMMA_API_KEY: z.string().min(1).optional(),
+  /** Signs inbound webhooks. Never the same value as JOMMA_API_KEY. */
+  JOMMA_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -16,6 +16,7 @@ import { getPlatformAccess, getUserStores } from "@/lib/auth/access";
 import { requireUser } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { savedItems } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { listOrdersForBuyer } from "@/lib/orders/queries";
 import { SignOutButton } from "./sign-out-button";
@@ -105,7 +106,7 @@ export default async function AccountPage() {
       */}
       <dl className="grid gap-px overflow-hidden rounded-xl bg-border sm:grid-cols-3">
         <Stat label="Orders" value={String(orders.length)} />
-        <Stat label="Spent" value={formatMoney(spent, "USD")} />
+        <Stat label="Spent" value={formatMoney(spent, PLATFORM_CURRENCY)} />
         <Stat label="Saved" value={String(savedCount)} />
       </dl>
 

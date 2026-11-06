@@ -15,6 +15,7 @@ import {
   subOrders,
   user,
 } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { storeBalance } from "@/lib/money/ledger";
 
 /**
@@ -395,7 +396,7 @@ export async function closeStoreAction(
     };
   }
 
-  const balance = await storeBalance(db, data.storeId, "USD");
+  const balance = await storeBalance(db, data.storeId, PLATFORM_CURRENCY);
   if (Number(balance) > 0) {
     return {
       ok: false,

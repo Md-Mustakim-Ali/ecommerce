@@ -10,6 +10,7 @@
  */
 
 import { and, eq, sql } from "drizzle-orm";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { db } from "../lib/db/index.ts";
 import {
   ledgerEntries,
@@ -62,14 +63,16 @@ async function main() {
     `${sub.orderNumber}: ${money(gross)} gross, ${money(sub.commissionCents)} commission\n`,
   );
 
-  const opening = await storeBalance(db, sub.storeId, "USD");
+  const opening = await storeBalance(db, sub.storeId, PLATFORM_CURRENCY);
 
   await db
     .transaction(async (tx) => {
       console.log("--- a partial refund ---");
 
       const half = Math.floor(gross / 2);
-      const before = Number(await storeBalance(tx, sub.storeId, "USD"));
+      const before = Number(
+        await storeBalance(tx, sub.storeId, PLATFORM_CURRENCY),
+      );
 
       const result = await recordRefund(tx, {
         subOrderId: sub.id,
@@ -80,7 +83,9 @@ async function main() {
 
       check("the refund is recorded", result.recorded);
 
-      const after = Number(await storeBalance(tx, sub.storeId, "USD"));
+      const after = Number(
+        await storeBalance(tx, sub.storeId, PLATFORM_CURRENCY),
+      );
       const drop = before - after;
 
       // The seller loses the refund but gets their commission share back, so
@@ -142,7 +147,7 @@ async function main() {
           subOrderId: sub.id,
           storeId: sub.storeId,
           amountCents: 500,
-          currency: "USD",
+          currency: PLATFORM_CURRENCY,
           reason: "Test",
         })
         .returning({ id: refundRequests.id, status: refundRequests.status });
@@ -152,7 +157,11 @@ async function main() {
         request.status === "requested",
       );
 
-      const balanceAfterRequest = await storeBalance(tx, sub.storeId, "USD");
+      const balanceAfterRequest = await storeBalance(
+        tx,
+        sub.storeId,
+        PLATFORM_CURRENCY,
+      );
       check(
         "filing a request does not touch the ledger",
         balanceAfterRequest === opening,
@@ -165,7 +174,7 @@ async function main() {
       if (!(error instanceof Rollback)) throw error;
     });
 
-  const closing = await storeBalance(db, sub.storeId, "USD");
+  const closing = await storeBalance(db, sub.storeId, PLATFORM_CURRENCY);
   check(
     "the seeded ledger is untouched",
     closing === opening,

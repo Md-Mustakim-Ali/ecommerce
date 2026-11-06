@@ -13,6 +13,7 @@ export * from "./catalog";
 export * from "./content";
 export * from "./discounts";
 export * from "./identity";
+export * from "./jomma";
 export * from "./money";
 export * from "./orders";
 export * from "./ratelimit";

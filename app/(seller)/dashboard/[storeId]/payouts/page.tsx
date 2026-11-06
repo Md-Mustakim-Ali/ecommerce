@@ -8,6 +8,7 @@ import { listStoreRefundsAction } from "@/lib/actions/refunds";
 import { requireStorePermission } from "@/lib/auth/access";
 import { db } from "@/lib/db";
 import { payouts, stores } from "@/lib/db/schema";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { storeBalance, storeLedger } from "@/lib/money/ledger";
 
@@ -69,7 +70,7 @@ export default async function StorePayoutsPage({
   const canReadLedger = access.permissions.has("ledger.view");
 
   const [balance, history, entries, refunds] = await Promise.all([
-    storeBalance(db, storeId, "USD"),
+    storeBalance(db, storeId, PLATFORM_CURRENCY),
     db
       .select()
       .from(payouts)
@@ -106,7 +107,7 @@ export default async function StorePayoutsPage({
         <div className="flex flex-col gap-1 bg-surface-1 px-4 py-3">
           <span className="text-secondary-text text-xs">Current balance</span>
           <span className="tabular font-semibold text-2xl">
-            {formatMoney(balance, "USD")}
+            {formatMoney(balance, PLATFORM_CURRENCY)}
           </span>
           <span className="text-tertiary-text text-xs">
             Sales less commission and anything already paid out.
@@ -115,7 +116,7 @@ export default async function StorePayoutsPage({
         <div className="flex flex-col gap-1 bg-surface-1 px-4 py-3">
           <span className="text-secondary-text text-xs">In flight</span>
           <span className="tabular font-semibold text-2xl">
-            {formatMoney(inFlight, "USD")}
+            {formatMoney(inFlight, PLATFORM_CURRENCY)}
           </span>
           <span className="text-tertiary-text text-xs">
             Payouts initiated but not yet confirmed by the bank.
@@ -190,7 +191,7 @@ export default async function StorePayoutsPage({
                 className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-surface-1 px-4 py-3"
               >
                 <span className="tabular shrink-0 font-medium text-sm">
-                  {formatMoney(refund.amountCents, "USD")}
+                  {formatMoney(refund.amountCents, PLATFORM_CURRENCY)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-secondary-text text-sm">
                   {refund.reason}

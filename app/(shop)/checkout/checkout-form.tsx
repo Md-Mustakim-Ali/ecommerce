@@ -10,7 +10,10 @@ import { Separator } from "@/components/ui/separator";
 import { placeOrderAction } from "@/lib/actions/checkout";
 import { checkDiscountAction } from "@/lib/actions/discounts";
 import type { CartSummary } from "@/lib/cart";
+import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
+import type { PaymentMethod } from "@/lib/payments/methods";
+import { cn } from "@/lib/utils";
 
 /**
  * Checkout.
@@ -22,15 +25,43 @@ import { formatMoney } from "@/lib/money/format";
  * The order is grouped by store in the summary, because that is how it will
  * actually arrive: one payment, one parcel per seller.
  */
+/**
+ * `manual` stays first and stays the default.
+ *
+ * Nothing here silently changes how an existing order settles: a buyer who
+ * ignores this section gets exactly the behaviour the shop had before bKash
+ * was added.
+ */
+const METHODS = [
+  {
+    value: "manual" as const,
+    label: "Pay on delivery / bank transfer",
+    description: "We confirm your payment before dispatch.",
+  },
+  {
+    value: "bkash" as const,
+    label: "bKash",
+    description: "Send money from your bKash app. We verify it automatically.",
+  },
+  {
+    value: "nagad" as const,
+    label: "Nagad",
+    description: "Send money from your Nagad app. We verify it automatically.",
+  },
+];
+
 export function CheckoutForm({
   cart,
   shippingCents,
   defaultEmail,
   defaultAddress,
+  jommaAvailable,
 }: {
   cart: CartSummary;
   shippingCents: number;
   defaultEmail: string;
+  /** Whether bKash/Nagad can be offered. Decided on the server. */
+  jommaAvailable: boolean;
   /** The buyer's saved default, pre-filled. Null for guests. */
   defaultAddress: {
     recipientName: string;
@@ -57,6 +88,10 @@ export function CheckoutForm({
   const [discountError, setDiscountError] = useState<string | null>(null);
   const [checking, startChecking] = useTransition();
 
+  const [method, setMethod] = useState<PaymentMethod>("manual");
+  // bKash and Nagad both need a sender number; the offline method does not.
+  const mobileMoney = method === "bkash" || method === "nagad";
+
   const byStore = new Map<string, typeof cart.lines>();
   for (const line of cart.lines) {
     byStore.set(line.storeId, [...(byStore.get(line.storeId) ?? []), line]);
@@ -77,6 +112,9 @@ export function CheckoutForm({
     startTransition(async () => {
       const result = await placeOrderAction({
         discountCode: discount?.code,
+        // Re-validated on the server against the same enum. The browser names
+        // a method; it does not get to name anything about the money.
+        paymentMethod: method,
         email: String(data.get("email") ?? ""),
         shippingAddress: {
           recipientName: String(data.get("recipientName") ?? ""),
@@ -210,16 +248,66 @@ export function CheckoutForm({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="phone">Phone (optional)</Label>
+            <Label htmlFor="phone">
+              {mobileMoney ? "Phone" : "Phone (optional)"}
+            </Label>
             <Input
               id="phone"
               name="phone"
               defaultValue={defaultAddress?.phone ?? ""}
               type="tel"
               autoComplete="tel"
+              required={mobileMoney}
             />
+            {/*
+              Not merely nice to have once bKash is selected. Jomma's automatic
+              matching refuses a payment whose intent declares no sender, so an
+              order placed without this can only ever be settled by the buyer
+              typing a transaction id in by hand.
+            */}
+            {mobileMoney ? (
+              <p className="text-tertiary-text text-xs">
+                The number you will send from. Without it we cannot match your
+                payment automatically.
+              </p>
+            ) : null}
           </div>
         </section>
+
+        {jommaAvailable ? (
+          <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-1 p-5">
+            <h2 className="font-medium">Payment</h2>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="sr-only">Payment method</legend>
+              {METHODS.map((option) => (
+                <label
+                  key={option.value}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-lg border p-3",
+                    method === option.value
+                      ? "border-accent bg-accent-muted"
+                      : "border-border hover:bg-surface-2",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value={option.value}
+                    checked={method === option.value}
+                    onChange={() => setMethod(option.value)}
+                    className="mt-1 accent-[var(--accent)]"
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-medium text-sm">{option.label}</span>
+                    <span className="text-secondary-text text-xs">
+                      {option.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          </section>
+        ) : null}
       </div>
 
       <aside className="flex h-fit flex-col gap-4 rounded-xl border border-border bg-surface-1 p-5 lg:sticky lg:top-24">
@@ -242,7 +330,7 @@ export function CheckoutForm({
                   </span>
                 </span>
                 <span className="tabular shrink-0">
-                  {formatMoney(line.lineTotalCents, "USD")}
+                  {formatMoney(line.lineTotalCents, PLATFORM_CURRENCY)}
                 </span>
               </div>
             ))}
@@ -353,7 +441,7 @@ export function CheckoutForm({
           <div className="flex justify-between">
             <dt className="text-secondary-text">Subtotal</dt>
             <dd className="tabular">
-              {formatMoney(cart.subtotalCents, "USD")}
+              {formatMoney(cart.subtotalCents, PLATFORM_CURRENCY)}
             </dd>
           </div>
 
@@ -361,7 +449,7 @@ export function CheckoutForm({
             <div className="flex justify-between">
               <dt className="text-positive">{discount.code}</dt>
               <dd className="tabular text-positive">
-                −{formatMoney(discount.amountCents, "USD")}
+                −{formatMoney(discount.amountCents, PLATFORM_CURRENCY)}
               </dd>
             </div>
           ) : null}
@@ -376,7 +464,7 @@ export function CheckoutForm({
                   "Free"
                 )
               ) : (
-                formatMoney(shippingAfter, "USD")
+                formatMoney(shippingAfter, PLATFORM_CURRENCY)
               )}
             </dd>
           </div>
@@ -387,7 +475,7 @@ export function CheckoutForm({
         <div className="flex items-baseline justify-between">
           <span className="font-medium">Total</span>
           <span className="tabular font-semibold text-xl">
-            {formatMoney(total, "USD")}
+            {formatMoney(total, PLATFORM_CURRENCY)}
           </span>
         </div>
 
@@ -405,8 +493,19 @@ export function CheckoutForm({
 
         <Button type="submit" size="lg" block disabled={pending}>
           {pending ? <Loader2 className="animate-spin" aria-hidden /> : null}
-          {pending ? "Placing order…" : "Place order"}
+          {pending
+            ? "Placing order…"
+            : mobileMoney
+              ? "Continue to payment"
+              : "Place order"}
         </Button>
+
+        {mobileMoney ? (
+          <p className="text-tertiary-text text-xs">
+            You will be taken to a secure page with the number to send to. Your
+            order is confirmed once we have verified the payment.
+          </p>
+        ) : null}
       </aside>
     </form>
   );
