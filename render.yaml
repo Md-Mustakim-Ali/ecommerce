@@ -1,0 +1,77 @@
+# Render blueprint — the storefront, as one free web service.
+#
+# Deliberately a SECOND service alongside jomma-web rather than sharing one.
+# Both are Next.js servers and each idles around 200-300 MB; two of them in a
+# single 512 MB free instance is an out-of-memory restart loop, and the restart
+# takes down payment verification along with the shop.
+#
+# The cost of splitting is that Render's 750 free instance-hours are per
+# workspace, shared across both services. That is a real budget and the sweep
+# interval on the Jomma side is what spends it — see docs/deploy.md.
+
+services:
+  - type: web
+    name: ecommerce-web
+    runtime: node
+    # Closest Render region to Bangladesh, and the same one jomma-web uses so
+    # the webhook hop between them stays inside the region.
+    region: singapore
+    plan: free
+    branch: main
+    # corepack, because package.json pins a pnpm version and Render's image
+    # ships a different one.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    # Cheap, always-public, and does not touch the database — a health check
+    # that queries Postgres would wake Neon on every probe and burn the free
+    # compute allowance doing nothing.
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: NODE_ENV
+        value: production
+
+      # Neon, and it must be a Postgres 18 project: uuidv7() is the DEFAULT on
+      # every primary key in this schema and does not exist before 18. Use the
+      # POOLED connection string — the one with `-pooler` in the host — because
+      # lib/db/index.ts sets prepare:false for transaction-mode pooling.
+      - key: DATABASE_URL
+        sync: false
+
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      # This service's own public URL, with the scheme. Better Auth compares
+      # the request Origin against it and returns 403 INVALID_ORIGIN on a
+      # mismatch, which presents as sign-in silently failing rather than as an
+      # error. Set it after the first deploy names the service:
+      #   https://ecommerce-web.onrender.com
+      - key: BETTER_AUTH_URL
+        sync: false
+
+      # ── Jomma ────────────────────────────────────────────────────────────
+      # JOMMA_URL is jomma-web's APP_URL.
+      # JOMMA_WEBHOOK_SECRET is jomma-web's WEBHOOK_SIGNING_SECRET — the same
+      # value on both sides, or every delivery fails signature verification.
+      # JOMMA_API_KEY is minted in the Jomma dashboard, not generated here.
+      - key: JOMMA_URL
+        sync: false
+      - key: JOMMA_API_KEY
+        sync: false
+      - key: JOMMA_WEBHOOK_SECRET
+        sync: false
+
+      # ── Cloudflare R2 ────────────────────────────────────────────────────
+      # All five or none. Without them uploads fall back to local disk, which
+      # on Render is wiped on every restart and every deploy.
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false

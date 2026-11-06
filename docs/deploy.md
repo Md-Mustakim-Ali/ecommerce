@@ -1,70 +1,62 @@
 # Deploying, on free tiers
 
-Three services, all free, all permitting commercial use:
+Everything here is free and permits commercial use.
 
-| Layer | Service | Why this one |
+| Piece | Where | Why |
 |---|---|---|
-| App | Netlify | The only free host that runs Next.js 16 App Router and Server Actions on a real Node runtime *and* allows commercial use. |
-| Database | Neon | The only free Postgres offering **PG 18**, which `uuidv7()` defaults require. |
-| Images | Cloudflare R2 | Zero egress, so photos never consume the Netlify bandwidth budget. |
+| Storefront | Render (`render.yaml`) | Real Node container — `sharp`, `postgres-js` and `node:crypto` all work. |
+| Jomma | Render (its own `render.yaml`) | A persistent server; cannot run serverless. |
+| Both databases | Neon | The only free Postgres offering **PG 18**, which `uuidv7()` requires. |
+| Product images | Cloudflare R2 | Zero egress, and Render's free tier has no persistent disk. |
+| Jomma's sweep | cron-job.org | Render's cron is not free, and without it no webhook is ever delivered. |
 
-**Vercel's Hobby plan is not an option.** Its Fair Use Guidelines define
-commercial usage to include "any method of requesting or processing payment
-from visitors of the site" — a bKash checkout violates it on day one. Pro is
-$20/month.
+**Vercel Hobby is not an option.** Its Fair Use Guidelines define commercial use
+to include "any method of requesting or processing payment from visitors of the
+site" — a bKash checkout violates it on day one.
 
-## 1. Database — Neon
+## Why two Render services, not one
 
-Create a project and **explicitly select Postgres 18**. Neon defaults to 17,
-and on 17 the migrations fail immediately: `uuidv7()` is the `DEFAULT` on every
-primary key in this schema and does not exist before 18.
+Both apps are Next.js servers, and each idles around 200–300 MB. Two of them in
+a single 512 MB free instance is an out-of-memory restart loop — and the restart
+takes payment verification down with the shop. Jomma also already ships its own
+blueprint, so splitting them is less work, not more.
 
-Copy the **pooled** connection string — the one with `-pooler` in the host.
-`lib/db/index.ts` sets `prepare: false` on serverless precisely because that
-endpoint runs in transaction mode.
+The cost is that Render's **750 free instance-hours are per workspace**, shared.
+See "The dial" at the end.
 
-```bash
-DATABASE_URL="postgresql://…-pooler.…neon.tech/…?sslmode=require"
-```
+---
 
-Then run the migrations once, from your machine:
+## 1. Databases — two Neon projects
+
+Create **two** projects. Neon's free plan gives each its own 0.5 GB and its own
+100 compute-hours, so separating them doubles the allowance and stops one app's
+load from starving the other.
+
+For the storefront project, **explicitly select Postgres 18**. Neon defaults to
+17, and on 17 every migration fails immediately — `uuidv7()` is the `DEFAULT` on
+every primary key here and does not exist before 18.
+
+Copy the **pooled** connection string for each — the one with `-pooler` in the
+host. [lib/db/index.ts](../lib/db/index.ts) sets `prepare: false` on serverless
+precisely because that endpoint runs in transaction mode.
+
+Run the storefront's migrations once, from your machine:
 
 ```bash
 pnpm db:migrate
 ```
 
-Not from CI. Netlify builds run concurrently, and a redeploy triggered mid-build
-gives two builders racing `drizzle-kit migrate` against one database.
-
-**Free tier limits that matter:** 0.5 GB storage, 100 compute-hours per project
-per month, and compute scales to zero after 5 minutes idle. Hitting either
-suspends the database until the next cycle.
+Not from the build. Render redeploys can overlap, and two builders racing
+`drizzle-kit migrate` against one database is how you get a half-applied schema.
 
 ## 2. Images — Cloudflare R2
 
-Create a bucket, enable public access (this gives you an `r2.dev` URL, or attach
-a custom domain), and create an S3-compatible API token with **Object Read &
-Write** scoped to that bucket.
+Create a bucket, enable public access (this gives an `r2.dev` URL, or attach a
+custom domain), and create an S3-compatible API token with **Object Read &
+Write** scoped to that bucket. Cloudflare requires a card on file to activate
+R2; it is not charged within the free 10 GB.
 
-```bash
-R2_ACCOUNT_ID="…"
-R2_ACCESS_KEY_ID="…"
-R2_SECRET_ACCESS_KEY="…"
-R2_BUCKET="…"
-R2_PUBLIC_URL="https://pub-xxxx.r2.dev"   # no trailing slash
-```
-
-All five or none — [lib/storage/index.ts](../lib/storage/index.ts) falls back to
-local disk if any is missing, which silently breaks uploads in production.
-
-`next.config.ts` reads the hostname out of `R2_PUBLIC_URL` and adds it to the
-`<Image>` allowlist automatically, so there is nothing to keep in sync. It
-throws on a malformed URL rather than letting every photo go silently missing.
-
-Cloudflare requires a payment method on file to activate R2. It is not charged
-within the free 10 GB.
-
-### Move the images you already have
+Then move the images already on disk:
 
 ```bash
 pnpm tsx --env-file=.env.local scripts/migrate-images-to-r2.ts --dry-run
@@ -73,60 +65,102 @@ pnpm tsx --env-file=.env.local scripts/migrate-images-to-r2.ts
 
 Every existing row points at `/uploads/…`, which 404s the moment there is no
 local disk. The script is idempotent and updates each row only after its upload
-succeeds, so an interrupted run leaves rows pointing at files that still work.
+lands.
 
-## 3. App — Netlify
+## 3. Deploy Jomma first
 
-Connect the GitHub repo. `netlify.toml` sets the build command, Node 22 and the
-build memory; the Next.js runtime is auto-detected.
+The storefront needs three values that do not exist until Jomma is up.
 
-Set every variable from `.env.example` in **Site configuration → Environment
-variables**, and set `BETTER_AUTH_URL` to the deployed origin. Better Auth
-compares the request `Origin` against it and returns `403 INVALID_ORIGIN` on a
-mismatch, which presents as sign-in silently failing.
+In Render: **New → Blueprint**, point at the `jomma` repo. Then set the vars its
+blueprint marks `sync: false`:
 
-### The limit that will bite
+- `DATABASE_URL` — the second Neon project, pooled
+- `APP_URL` — `https://jomma-web.onrender.com`, **with the scheme**. Its own
+  comments explain why: Better Auth rejects a schemeless baseURL and the cron
+  builds `${APP_URL}/api/internal/sweep`, which without a scheme is not
+  fetchable — so no jobs run and no webhook is ever delivered.
+- `ANDROID_CERT_SHA256` — after building the notifier APK
 
-The free plan is **300 credits/month**: a production deploy costs 15, bandwidth
-20 per GB, compute 10 per GB-hour, requests 2 per 10k. When the budget runs out
-**every project on the account pauses** until the next cycle, and you cannot pay
-past it without upgrading.
+Render generates `AUTH_SECRET` and `WEBHOOK_SIGNING_SECRET`. **Copy both out of
+the dashboard**; you need them in the next two steps.
 
-Ten deploys leaves roughly 7 GB of traffic. Serving images from R2 is what makes
-that workable — it is the difference between spending the budget on HTML and
-spending it on photographs.
+Then mint an API key in the Jomma dashboard for the storefront.
 
-Watch the compute line: every Server Action and every server-rendered page is a
-billed function invocation.
+## 4. Deploy the storefront
 
-## 4. Jomma
+**New → Blueprint**, point at this repo. Set:
 
-Register the deployed hostname under **Apps → Hosted checkout**. An app with no
-registered hostnames gets *no* redirect at all rather than any redirect it asks
-for, so checkout will fail to return the buyer.
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | The PG 18 Neon project, pooled |
+| `BETTER_AUTH_URL` | `https://ecommerce-web.onrender.com` |
+| `JOMMA_URL` | Jomma's `APP_URL` |
+| `JOMMA_API_KEY` | The key you just minted |
+| `JOMMA_WEBHOOK_SECRET` | Jomma's `WEBHOOK_SIGNING_SECRET` — **the same value on both sides** |
+| `R2_*` | The five from step 2 |
 
-Point the webhook at:
+`BETTER_AUTH_SECRET` is generated for you.
+
+The one that silently breaks everything is `JOMMA_WEBHOOK_SECRET`. If it does
+not match Jomma's `WEBHOOK_SIGNING_SECRET` exactly, every delivery fails
+signature verification, the route returns 400, and orders stay unpaid with no
+obvious cause. It is the first thing to check if payments never confirm.
+
+## 5. Register the storefront with Jomma
+
+In Jomma: **Apps → Hosted checkout**, register `ecommerce-web.onrender.com`. An
+app with no registered hostnames gets *no* redirect at all rather than any
+redirect it asks for, so buyers never come back from the pay page.
+
+Point Jomma's webhook at:
 
 ```
-POST https://<your-host>/api/webhooks/jomma
+POST https://ecommerce-web.onrender.com/api/webhooks/jomma
 ```
 
-Set `JOMMA_URL`, `JOMMA_API_KEY` and `JOMMA_WEBHOOK_SECRET` in Netlify. Without
-them the app still boots and simply does not offer bKash or Nagad — see
-[docs/jomma.md](jomma.md).
+## 6. The cron — do not skip this
 
-**Jomma itself cannot run on Netlify.** It watches a phone for SMS, which is a
-persistent process, not a serverless function. It needs somewhere that stays
-running.
+Without it **no webhook is ever delivered** and no intent ever expires. On
+[cron-job.org](https://cron-job.org):
+
+```
+POST https://jomma-web.onrender.com/api/internal/sweep?group=all
+Authorization: Bearer <AUTH_SECRET>
+```
+
+## The dial
+
+Three free limits are in tension, and the sweep interval is what moves between
+them:
+
+- **Render:** 750 instance-hours/month, shared by both services. A service stays
+  awake 15 minutes after each request, so an hourly sweep keeps Jomma up roughly
+  25% of the time (~180 h), leaving plenty for the shop. A sweep every 14
+  minutes never lets it sleep (~730 h) and starves the storefront.
+- **Neon:** 100 compute-hours/month *per project*. Each sweep wakes Jomma's
+  database for about 5 minutes. Hourly is ~60 h/month and fits; every 30 minutes
+  is ~120 h and does not.
+- **Latency:** the sweep is what flushes webhooks, so its interval is roughly
+  how long a buyer waits for their order to flip from "checking" to paid.
+
+**Hourly is the free-tier sweet spot**, at the cost of up to an hour before a
+payment confirms. Jomma's own `docs/deploy.md` covers this trade-off — check it,
+since you wrote it.
+
+Both services sleep after 15 minutes idle and take 30–60 seconds to wake.
+Nothing is lost when Jomma is asleep: the phone retries captures from its own
+queue, and the webhook handler here is idempotent and keyed on `event.id`, so a
+redelivery is a no-op.
 
 ## Before going live
 
-- [ ] Neon project is on **Postgres 18**, using the **pooled** string
-- [ ] `pnpm db:migrate` run once against production
+- [ ] Storefront's Neon project is **Postgres 18**, using the **pooled** string
+- [ ] `pnpm db:migrate` run once against it
 - [ ] Images migrated to R2 and a product page renders photos
 - [ ] `BETTER_AUTH_URL` matches the deployed origin exactly
-- [ ] Deployed hostname registered with Jomma
-- [ ] A signed webhook reaches `/api/webhooks/jomma` and marks an order paid
-- [ ] Shipping settings revisited for BDT — the seeded values are still
-      dollar-era figures reinterpreted as taka (see the note in
-      [docs/jomma.md](jomma.md))
+- [ ] `JOMMA_WEBHOOK_SECRET` === Jomma's `WEBHOOK_SIGNING_SECRET`
+- [ ] Storefront hostname registered under Apps → Hosted checkout
+- [ ] The sweep cron is running and authenticated
+- [ ] A real bKash payment flips an order to paid
+- [ ] Shipping settings revisited for BDT — the seeded values are dollar-era
+      figures reinterpreted as taka (see [jomma.md](jomma.md))
