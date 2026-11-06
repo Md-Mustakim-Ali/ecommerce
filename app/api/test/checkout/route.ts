@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { placeOrderAction } from "@/lib/actions/checkout";
 import { addLine } from "@/lib/cart";
+import { paymentMethods } from "@/lib/payments/methods";
 
 /**
  * A checkout in one request, for the load test.
@@ -22,6 +23,17 @@ import { addLine } from "@/lib/cart";
 const schema = z.object({
   variantId: z.uuid(),
   email: z.email(),
+  /**
+   * Defaults to the offline path, which is what the load test wants — it
+   * measures our own checkout rather than a round trip to Jomma.
+   *
+   * Set it to bkash or nagad to exercise the mobile-money branch, which is the
+   * only way to reach startPayment() through the real action rather than by
+   * reimplementing it in a script.
+   */
+  paymentMethod: z.enum(paymentMethods).default("manual"),
+  /** The sender's number. Jomma cannot auto-match an intent without one. */
+  phone: z.string().trim().max(40).optional(),
 });
 
 export async function POST(request: Request) {
@@ -41,12 +53,14 @@ export async function POST(request: Request) {
 
     const result = await placeOrderAction({
       email: parsed.data.email,
+      paymentMethod: parsed.data.paymentMethod,
       shippingAddress: {
         recipientName: "Load Test",
+        phone: parsed.data.phone,
         line1: "1 Test Street",
         city: "Testville",
         postalCode: "12345",
-        countryCode: "US",
+        countryCode: "BD",
       },
     });
 
