@@ -46,6 +46,26 @@ const envSchema = z.object({
   JOMMA_API_KEY: z.string().min(1).optional(),
   /** Signs inbound webhooks. Never the same value as JOMMA_API_KEY. */
   JOMMA_WEBHOOK_SECRET: z.string().min(1).optional(),
+
+  // -- Cloudflare R2: product image storage ---------------------------------
+  //
+  // All five or none. lib/storage/index.ts falls back to local disk when any
+  // is missing, which is right for development and wrong in production: a
+  // serverless filesystem is per-instance and does not survive a redeploy, so
+  // an image uploaded through one function invocation is a 404 on the next and
+  // gone entirely on the next deploy.
+  R2_ACCOUNT_ID: z.string().min(1).optional(),
+  R2_ACCESS_KEY_ID: z.string().min(1).optional(),
+  R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  R2_BUCKET: z.string().min(1).optional(),
+  /**
+   * Public base URL images are served from — an r2.dev domain or a custom one.
+   *
+   * Its hostname must also appear in next.config.ts remotePatterns or <Image>
+   * refuses to render anything from it, which presents as every product photo
+   * silently missing rather than as an error.
+   */
+  R2_PUBLIC_URL: z.url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

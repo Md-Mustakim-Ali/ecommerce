@@ -1,0 +1,29 @@
+# Netlify build configuration.
+#
+# The Next.js runtime is auto-detected — @netlify/plugin-nextjs does not need
+# declaring here, and pinning it in [[plugins]] is the usual way to end up on a
+# stale adapter that lags a Next release.
+
+[build]
+  command = "pnpm build"
+  publish = ".next"
+
+[build.environment]
+  # package.json requires >=22. Netlify's default lags, and the failure is a
+  # syntax error deep in a dependency rather than a clear version complaint.
+  NODE_VERSION = "22"
+  # Turbopack and the React compiler are memory-hungry on a cold build.
+  NODE_OPTIONS = "--max-old-space-size=4096"
+
+# Migrations are deliberately NOT run here.
+#
+# Netlify builds run concurrently — a redeploy triggered while one is in flight
+# gives two builders racing the same `drizzle-kit migrate` against one database.
+# Migrations are a deploy step you run once, from one place. See docs/deploy.md.
+
+[[headers]]
+  for = "/api/webhooks/*"
+  [headers.values]
+    # A webhook is not a cacheable resource. This is belt and braces alongside
+    # the route's own `dynamic = "force-dynamic"`.
+    Cache-Control = "no-store"

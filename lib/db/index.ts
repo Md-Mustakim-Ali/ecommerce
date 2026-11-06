@@ -13,7 +13,39 @@ const globalForDb = globalThis as unknown as {
   __client?: ReturnType<typeof postgres>;
 };
 
-const client = globalForDb.__client ?? postgres(env.DATABASE_URL, { max: 10 });
+/**
+ * Serverless deployments get one connection per instance, not ten.
+ *
+ * A long-lived server wants a pool: ten sockets shared by every request that
+ * process handles. A serverless function is the opposite shape — dozens of
+ * short-lived instances, each running one request at a time, each opening its
+ * own pool. `max: 10` there means ten sockets per instance against a database
+ * whose free tier allows a few hundred in total, so a modest traffic spike
+ * exhausts the pooler and every subsequent request fails to connect. One
+ * connection per instance is the correct size when the instance only ever runs
+ * one query at a time.
+ *
+ * `prepare: false` goes with it. Managed poolers — Neon's, Supabase's,
+ * pgbouncer generally — run in transaction mode, where a connection is handed
+ * to a different client between statements. Prepared statements are bound to a
+ * session, so under transaction pooling they are prepared on one backend and
+ * executed on another, which fails intermittently and only under load. That is
+ * the worst possible failure to debug, which is why it is turned off rather
+ * than left to chance.
+ *
+ * NETLIFY is set by Netlify's build and runtime; VERCEL by Vercel's. Both are
+ * checked so this is right on either without further configuration.
+ */
+const isServerless = Boolean(process.env.NETLIFY ?? process.env.VERCEL);
+
+const client =
+  globalForDb.__client ??
+  postgres(
+    env.DATABASE_URL,
+    isServerless
+      ? { max: 1, prepare: false, idle_timeout: 20, connect_timeout: 10 }
+      : { max: 10 },
+  );
 
 if (process.env.NODE_ENV !== "production") {
   globalForDb.__client = client;

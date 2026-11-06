@@ -31,6 +31,7 @@
     "load:checkout": "tsx --env-file=.env.local scripts/load-test-checkout.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1127.0",
     "@base-ui/react": "^1.7.0",
     "@jomma/sdk": "^1.4.5",
     "@tanstack/react-virtual": "^3.14.10",
