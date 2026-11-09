@@ -59,8 +59,8 @@ R2; it is not charged within the free 10 GB.
 Then move the images already on disk:
 
 ```bash
-pnpm tsx --env-file=.env.local scripts/migrate-images-to-r2.ts --dry-run
-pnpm tsx --env-file=.env.local scripts/migrate-images-to-r2.ts
+pnpm tsx --env-file=.env.local scripts/migrate-images-to-r2.mts --dry-run
+pnpm tsx --env-file=.env.local scripts/migrate-images-to-r2.mts
 ```
 
 Every existing row points at `/uploads/…`, which 404s the moment there is no
@@ -81,8 +81,10 @@ blueprint marks `sync: false`:
   fetchable — so no jobs run and no webhook is ever delivered.
 - `ANDROID_CERT_SHA256` — after building the notifier APK
 
-Render generates `AUTH_SECRET` and `WEBHOOK_SIGNING_SECRET`. **Copy both out of
-the dashboard**; you need them in the next two steps.
+Render generates `AUTH_SECRET` — **copy it**, it is the bearer token the sweep
+cron presents in step 6. `WEBHOOK_SIGNING_SECRET` is also generated but is not
+needed by the storefront: it verifies webhooks arriving *into* Jomma from the
+Android notifier, not the ones Jomma sends out.
 
 Then mint an API key in the Jomma dashboard for the storefront.
 
@@ -96,27 +98,41 @@ Then mint an API key in the Jomma dashboard for the storefront.
 | `BETTER_AUTH_URL` | `https://ecommerce-web.onrender.com` |
 | `JOMMA_URL` | Jomma's `APP_URL` |
 | `JOMMA_API_KEY` | The key you just minted |
-| `JOMMA_WEBHOOK_SECRET` | Jomma's `WEBHOOK_SIGNING_SECRET` — **the same value on both sides** |
+| `JOMMA_WEBHOOK_SECRET` | The `whsec_…` shown when you create the webhook endpoint (step 5) |
 | `R2_*` | The five from step 2 |
 
 `BETTER_AUTH_SECRET` is generated for you.
 
-The one that silently breaks everything is `JOMMA_WEBHOOK_SECRET`. If it does
-not match Jomma's `WEBHOOK_SIGNING_SECRET` exactly, every delivery fails
-signature verification, the route returns 400, and orders stay unpaid with no
-obvious cause. It is the first thing to check if payments never confirm.
+The one that silently breaks everything is `JOMMA_WEBHOOK_SECRET`, and there
+are two different secrets it is easy to confuse:
+
+- `WEBHOOK_SIGNING_SECRET` is a Jomma *environment variable*. It verifies
+  webhooks arriving **into** Jomma from the Android notifier. It is **not** this.
+- `webhook_endpoints.secret` — the `whsec_…` shown once when you create the
+  endpoint — signs deliveries **out** of Jomma to this store. This is the one.
+
+Get it wrong and every delivery fails verification, the route returns 400, and
+orders stay unpaid with no obvious cause.
 
 ## 5. Register the storefront with Jomma
 
-In Jomma: **Apps → Hosted checkout**, register `ecommerce-web.onrender.com`. An
-app with no registered hostnames gets *no* redirect at all rather than any
-redirect it asks for, so buyers never come back from the pay page.
+Two separate registrations, both in the Jomma dashboard.
 
-Point Jomma's webhook at:
+**Hosted checkout hostnames** — on the app, add your storefront's hostname. The
+schema comment is explicit about why this fails closed: an unchecked
+`return_url` is an open redirect on a page the buyer was just told to trust with
+a payment. An app with no registered hostnames gets *no* redirect at all, so
+buyers never come back from the pay page.
+
+**A webhook endpoint** — URL:
 
 ```
-POST https://ecommerce-web.onrender.com/api/webhooks/jomma
+https://<your-host>/api/webhooks/jomma
 ```
+
+Enable every `payment.*` event. Creating it produces a `whsec_…` secret shown
+once — that value is `JOMMA_WEBHOOK_SECRET` on the store. It is per-endpoint,
+not the `WEBHOOK_SIGNING_SECRET` environment variable.
 
 ## 6. The cron — do not skip this
 
@@ -158,7 +174,8 @@ redelivery is a no-op.
 - [ ] `pnpm db:migrate` run once against it
 - [ ] Images migrated to R2 and a product page renders photos
 - [ ] `BETTER_AUTH_URL` matches the deployed origin exactly
-- [ ] `JOMMA_WEBHOOK_SECRET` === Jomma's `WEBHOOK_SIGNING_SECRET`
+- [ ] `JOMMA_WEBHOOK_SECRET` === the webhook **endpoint's** `whsec_…`, not the
+      `WEBHOOK_SIGNING_SECRET` environment variable
 - [ ] Storefront hostname registered under Apps → Hosted checkout
 - [ ] The sweep cron is running and authenticated
 - [ ] A real bKash payment flips an order to paid
