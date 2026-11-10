@@ -171,10 +171,27 @@ export async function placeOrderAction(
       // converting per order.
       amountMinorUnits: result.totalCents,
       provider: method === "any" ? "any" : method,
-      // Automatic matching needs a declared sender; without one the buyer can
-      // only settle by typing a TrxID by hand. We pass the checkout phone when
-      // there is one and otherwise let the hosted page ask.
-      payerMsisdn: parsed.data.shippingAddress.phone?.trim() || null,
+      // ── Deliberately not sending the checkout phone ──────────────────────
+      //
+      // It is tempting, because Jomma matches faster with a declared sender.
+      // But the number collected at checkout is a *delivery* number, and the
+      // number money arrives from is the *payer's*. A parcel going to a
+      // recipient paid for by somebody else is an ordinary Bangladeshi
+      // transaction, not an edge case.
+      //
+      // What makes sending it actively wrong rather than merely imprecise is
+      // how Jomma treats a populated payerMsisdn: pay-page.ts derives
+      // `payerKnown: Boolean(row.payerMsisdn)` and the pay client skips the
+      // step that asks. So a delivery number sent here does not become a hint
+      // Jomma might check — it becomes the answer, unasked, and every payment
+      // from a different handset then fails to auto-match while looking
+      // correctly configured from both sides.
+      //
+      // Null instead, so the pay page asks the buyer, who is the only party
+      // that knows. Jomma is being changed to pre-fill this from the order and
+      // ask the buyer to confirm it; once that ships, pass the phone here
+      // again — the value is genuinely useful as a *suggestion*.
+      payerMsisdn: null,
       returnUrl: absoluteUrl(`/orders/${result.orderId}?awaiting=1`),
       cancelUrl: absoluteUrl("/cart"),
       attempt: 1,

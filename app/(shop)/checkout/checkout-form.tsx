@@ -39,14 +39,25 @@ const METHODS = [
     description: "We confirm your payment before dispatch.",
   },
   {
-    value: "bkash" as const,
-    label: "bKash",
-    description: "Send money from your bKash app. We verify it automatically.",
-  },
-  {
-    value: "nagad" as const,
-    label: "Nagad",
-    description: "Send money from your Nagad app. We verify it automatically.",
+    // One option, not one per provider.
+    //
+    // Splitting bKash and Nagad here was a mistake worth recording, because it
+    // looked like giving the buyer control and actually took control away.
+    // Jomma routes an intent by picking the *least utilised* healthy receiving
+    // account across every provider. Naming one provider filters that pool
+    // before it is sorted, so a buyer who chose bKash gets turned away when the
+    // bKash number is near its daily cap — while an idle Nagad account sits
+    // right there. It also removes failover: one phone drops off and that
+    // checkout dies instead of routing around it.
+    //
+    // The choice is not lost, it moves to where it can be made properly. The
+    // hosted pay page offers a provider switch with live knowledge of which
+    // accounts are actually healthy, which a radio button rendered minutes
+    // earlier on this page cannot have.
+    value: "any" as const,
+    label: "bKash / Nagad",
+    description:
+      "Send money from your mobile wallet. We verify it automatically and you pick the app on the next step.",
   },
 ];
 
@@ -89,8 +100,8 @@ export function CheckoutForm({
   const [checking, startChecking] = useTransition();
 
   const [method, setMethod] = useState<PaymentMethod>("manual");
-  // bKash and Nagad both need a sender number; the offline method does not.
-  const mobileMoney = method === "bkash" || method === "nagad";
+  // Anything that is not the offline path settles through Jomma.
+  const mobileMoney = method !== "manual";
 
   const byStore = new Map<string, typeof cart.lines>();
   for (const line of cart.lines) {
@@ -247,30 +258,31 @@ export function CheckoutForm({
             />
           </div>
 
+          {/*
+            A delivery number, and only that.
+
+            This field used to become required and relabel itself when bKash was
+            selected, on the assumption that the number somebody wants a parcel
+            delivered to is the number they pay from. Those are routinely
+            different people — a parcel goes to the recipient, the payment comes
+            from whoever is buying it — and conflating them would have quietly
+            fed the wrong number into payment matching.
+
+            The number to pay from is asked for on the pay page, where the
+            question can actually be answered.
+          */}
           <div className="grid gap-2">
-            <Label htmlFor="phone">
-              {mobileMoney ? "Phone" : "Phone (optional)"}
-            </Label>
+            <Label htmlFor="phone">Phone (optional)</Label>
             <Input
               id="phone"
               name="phone"
               defaultValue={defaultAddress?.phone ?? ""}
               type="tel"
               autoComplete="tel"
-              required={mobileMoney}
             />
-            {/*
-              Not merely nice to have once bKash is selected. Jomma's automatic
-              matching refuses a payment whose intent declares no sender, so an
-              order placed without this can only ever be settled by the buyer
-              typing a transaction id in by hand.
-            */}
-            {mobileMoney ? (
-              <p className="text-tertiary-text text-xs">
-                The number you will send from. Without it we cannot match your
-                payment automatically.
-              </p>
-            ) : null}
+            <p className="text-tertiary-text text-xs">
+              For delivery updates. The courier may call this number.
+            </p>
           </div>
         </section>
 
@@ -502,8 +514,9 @@ export function CheckoutForm({
 
         {mobileMoney ? (
           <p className="text-tertiary-text text-xs">
-            You will be taken to a secure page with the number to send to. Your
-            order is confirmed once we have verified the payment.
+            You will be taken to a secure page to choose bKash or Nagad and see
+            the number to send to. Your order is confirmed once we have verified
+            the payment.
           </p>
         ) : null}
       </aside>

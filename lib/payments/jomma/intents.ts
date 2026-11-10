@@ -52,13 +52,20 @@ export async function startPayment(input: {
   amountMinorUnits: number;
   provider: ProviderPreference;
   /**
-   * The number the buyer will send from.
+   * The number the buyer will send money FROM. Not their delivery number.
    *
-   * The SDK's own docs are blunter than the integration brief here: automatic
-   * matching refuses a payment whose intent has no declared sender, so an
-   * intent without this can only ever be settled by the buyer typing a TrxID
-   * in by hand. We pass the checkout phone when we have one and otherwise let
-   * the hosted pay page ask, which is what the SDK recommends.
+   * Null is the right value whenever the caller is not certain, and certainty
+   * is rarer than it looks: the phone taken at checkout belongs to whoever
+   * receives the parcel, which is often not whoever pays for it.
+   *
+   * Passing a value here is not a hint. Jomma reads a populated payerMsisdn as
+   * settled fact — `payerKnown` on the pay page is a plain Boolean over this
+   * field — and skips asking the buyer. So a guess sent here is silently
+   * adopted as the answer, and payments from any other handset fail to
+   * auto-match with nothing visibly misconfigured anywhere.
+   *
+   * Null costs one screen on the pay page and gets the number from the only
+   * party who actually knows it.
    */
   payerMsisdn: string | null;
   returnUrl: string;
