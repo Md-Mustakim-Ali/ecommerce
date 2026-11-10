@@ -1,33 +1,34 @@
 "use client";
 
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Download, Printer } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 /**
  * The controls above an invoice. Hidden from the printed sheet.
  *
- * ── Why "Save as PDF" opens the print dialog ─────────────────────────────
+ * Two separate actions, because they are two different intentions:
  *
- * There is no server-side PDF renderer here, and adding one would be the wrong
- * trade. The two options are a headless browser, which cannot run in 512 MB
- * with a tenth of a CPU, or a PDF library — which means maintaining a second
- * layout that inevitably drifts from this one, so the document somebody files
- * for a warranty claim stops matching the document they were shown.
+ *   Save  — a real file, generated server-side by lib/orders/invoice-pdf.ts and
+ *           returned with Content-Disposition: attachment. A plain link rather
+ *           than a fetch-and-blob dance, so the browser's own download manager
+ *           handles it and a slow connection shows real progress.
  *
- * The browser's own print pipeline renders exactly what is on screen and has
- * "Save as PDF" built into it on every desktop platform, and behind the share
- * sheet on iOS and Android. One layout, no dependency, and the PDF is
- * guaranteed to match the preview because it *is* the preview.
+ *   Print — the browser's print pipeline against the document on screen.
  *
- * The button says so rather than pretending a download is about to start.
+ * They deliberately produce slightly different-looking documents: the printed
+ * sheet is this page's HTML, the saved file is drawn by pdfkit. Both read the
+ * same Invoice object, so no figure can differ between them — which is the part
+ * that matters on something filed for a warranty claim.
  */
 export function InvoiceActions({
   backHref,
   backLabel,
+  pdfHref,
 }: {
   backHref: string;
   backLabel: string;
+  pdfHref: string;
 }) {
   return (
     <div className="print:hidden mx-auto flex w-full max-w-[210mm] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-0">
@@ -37,12 +38,21 @@ export function InvoiceActions({
       </Button>
 
       <div className="flex items-center gap-2">
-        <p className="mr-1 hidden text-tertiary-text text-xs sm:block">
-          Choose “Save as PDF” in the print dialog to download.
-        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          // A real navigation, not next/link: the response is an attachment, so
+          // the browser downloads it and stays put. Routing through the client
+          // router would try to render a PDF as a page.
+          render={<a href={pdfHref} />}
+        >
+          <Download aria-hidden className="size-4" />
+          Save as PDF
+        </Button>
+
         <Button size="sm" onClick={() => window.print()}>
           <Printer aria-hidden className="size-4" />
-          Print or save as PDF
+          Print
         </Button>
       </div>
     </div>

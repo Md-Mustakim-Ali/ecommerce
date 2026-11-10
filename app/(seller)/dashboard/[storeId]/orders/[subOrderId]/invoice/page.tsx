@@ -34,6 +34,7 @@ export default async function SellerInvoicePage({
       <InvoiceActions
         backHref={`/dashboard/${storeId}/orders`}
         backLabel="Back to orders"
+        pdfHref={`/dashboard/${storeId}/orders/${subOrderId}/invoice/pdf`}
       />
       <InvoiceDocument invoice={invoice} />
     </div>
