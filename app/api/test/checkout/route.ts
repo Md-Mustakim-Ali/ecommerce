@@ -32,7 +32,11 @@ const schema = z.object({
    * reimplementing it in a script.
    */
   paymentMethod: z.enum(paymentMethods).default("manual"),
-  /** The sender's number. Jomma cannot auto-match an intent without one. */
+  /**
+   * The delivery number. Optional here and defaulted below, because the load
+   * test does not send one and its point is to measure checkout rather than to
+   * exercise validation.
+   */
   phone: z.string().trim().max(40).optional(),
 });
 
@@ -56,7 +60,9 @@ export async function POST(request: Request) {
       paymentMethod: parsed.data.paymentMethod,
       shippingAddress: {
         recipientName: "Load Test",
-        phone: parsed.data.phone,
+        // A valid Bangladeshi mobile, because the address below says BD and
+        // checkout now rejects anything that a courier could not ring.
+        phone: parsed.data.phone ?? "01712345678",
         line1: "1 Test Street",
         city: "Testville",
         postalCode: "12345",

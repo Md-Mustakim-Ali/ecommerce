@@ -30,16 +30,51 @@ import { getPlatformSettings, shippingFor } from "@/lib/settings";
  * confirms payment, which is the webhook's job.
  */
 
-const addressSchema = z.object({
-  recipientName: z.string().trim().min(1, "Enter a name").max(120),
-  phone: z.string().trim().max(40).optional(),
-  line1: z.string().trim().min(1, "Enter an address").max(200),
-  line2: z.string().trim().max(200).optional(),
-  city: z.string().trim().min(1, "Enter a city").max(120),
-  region: z.string().trim().max(120).optional(),
-  postalCode: z.string().trim().min(1, "Enter a postcode").max(40),
-  countryCode: z.string().trim().length(2, "Use a 2-letter country code"),
-});
+/** Bangladeshi mobile: 11 digits, 01, then an operator prefix of 3–9. */
+const BD_MOBILE = /^01[3-9]\d{8}$/;
+
+const addressSchema = z
+  .object({
+    recipientName: z.string().trim().min(1, "Enter a name").max(120),
+    /**
+     * Required. A courier who cannot telephone the recipient cannot deliver,
+     * and a failed delivery costs the seller the parcel and the buyer the
+     * order — so this is worth blocking checkout over rather than discovering
+     * on the doorstep.
+     *
+     * This is the delivery number and nothing else. It is deliberately not
+     * sent to Jomma as the payer's number; see the note in the intent call
+     * below for why guessing there is worse than not knowing.
+     */
+    phone: z.string().trim().min(1, "Enter a phone number").max(40),
+    line1: z.string().trim().min(1, "Enter an address").max(200),
+    line2: z.string().trim().max(200).optional(),
+    city: z.string().trim().min(1, "Enter a city").max(120),
+    region: z.string().trim().max(120).optional(),
+    postalCode: z.string().trim().min(1, "Enter a postcode").max(40),
+    countryCode: z.string().trim().length(2, "Use a 2-letter country code"),
+  })
+  .superRefine((address, ctx) => {
+    // Format-checked only for Bangladesh, because that is the only country
+    // whose numbering plan this shop can claim to know. Applying a BD pattern
+    // to every address would reject perfectly good foreign numbers, and
+    // accepting anything at all would let "0171" through to a courier as
+    // though it were a phone number.
+    if (address.countryCode.toUpperCase() !== "BD") return;
+
+    // Spaces and dashes are how people actually type a number; strip the
+    // formatting before judging it rather than making the buyer guess our
+    // preferred punctuation. +880 is the same number written for abroad.
+    const digits = address.phone.replace(/[\s-]/g, "").replace(/^\+?880/, "0");
+
+    if (!BD_MOBILE.test(digits)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["phone"],
+        message: "Enter a valid mobile number, like 01712345678.",
+      });
+    }
+  });
 
 const checkoutSchema = z.object({
   email: z.email("Enter a valid email"),

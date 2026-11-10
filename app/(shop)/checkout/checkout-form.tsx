@@ -272,16 +272,19 @@ export function CheckoutForm({
             question can actually be answered.
           */}
           <div className="grid gap-2">
-            <Label htmlFor="phone">Phone (optional)</Label>
+            <Label htmlFor="phone">Phone</Label>
             <Input
               id="phone"
               name="phone"
               defaultValue={defaultAddress?.phone ?? ""}
               type="tel"
+              inputMode="tel"
               autoComplete="tel"
+              placeholder="01712345678"
+              required
             />
             <p className="text-tertiary-text text-xs">
-              For delivery updates. The courier may call this number.
+              The courier will call this number to deliver your order.
             </p>
           </div>
         </section>
