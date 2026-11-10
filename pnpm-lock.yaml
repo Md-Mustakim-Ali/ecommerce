@@ -15,8 +15,8 @@ importers:
         specifier: ^1.7.0
         version: 1.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@jomma/sdk':
-        specifier: ^1.4.5
-        version: 1.4.5
+        specifier: ^1.4.19
+        version: 1.4.19
       '@tanstack/react-virtual':
         specifier: ^3.14.10
         version: 3.14.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1199,8 +1199,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@jomma/sdk@1.4.5':
-    resolution: {integrity: sha512-GoXLIZAqsIHqVutyo8qcZntvUwsJrZb1km+zF/RtUxnbwNYCZtdl26tuah5DE3N2zmdTFhDC6AYs2Y2BqWOlkw==}
+  '@jomma/sdk@1.4.19':
+    resolution: {integrity: sha512-BOCQb8Z8XfndXckSP9yAGqZJWM/2Y6KQ8U6fDke0vJRUebfAE2AT5As6x9t9gF8fzBqQmpOTqgkQbRKNSbRz8w==}
     engines: {node: '>=20'}
 
   '@jridgewell/gen-mapping@0.3.13':
@@ -4734,7 +4734,7 @@ snapshots:
   '@img/sharp-win32-x64@0.35.4':
     optional: true
 
-  '@jomma/sdk@1.4.5': {}
+  '@jomma/sdk@1.4.19': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

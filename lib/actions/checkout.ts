@@ -17,6 +17,7 @@ import { startPayment } from "@/lib/payments/jomma/intents";
 import { paymentMethods } from "@/lib/payments/methods";
 import { callerKey, checkRateLimit } from "@/lib/ratelimit";
 import { getPlatformSettings, shippingFor } from "@/lib/settings";
+import { isDeliverablePhone, normaliseBdMobile } from "@/lib/validation/phone";
 
 /**
  * Checkout.
@@ -30,9 +31,6 @@ import { getPlatformSettings, shippingFor } from "@/lib/settings";
  * confirms payment, which is the webhook's job.
  */
 
-/** Bangladeshi mobile: 11 digits, 01, then an operator prefix of 3–9. */
-const BD_MOBILE = /^01[3-9]\d{8}$/;
-
 const addressSchema = z
   .object({
     recipientName: z.string().trim().min(1, "Enter a name").max(120),
@@ -42,9 +40,9 @@ const addressSchema = z
      * order — so this is worth blocking checkout over rather than discovering
      * on the doorstep.
      *
-     * This is the delivery number and nothing else. It is deliberately not
-     * sent to Jomma as the payer's number; see the note in the intent call
-     * below for why guessing there is worse than not knowing.
+     * Primarily the delivery number. It is also offered to Jomma as a
+     * *suggested* payer number — the buyer is asked to confirm it and can
+     * replace it, so a parcel paid for by somebody else still settles.
      */
     phone: z.string().trim().min(1, "Enter a phone number").max(40),
     line1: z.string().trim().min(1, "Enter an address").max(200),
@@ -55,25 +53,16 @@ const addressSchema = z
     countryCode: z.string().trim().length(2, "Use a 2-letter country code"),
   })
   .superRefine((address, ctx) => {
-    // Format-checked only for Bangladesh, because that is the only country
-    // whose numbering plan this shop can claim to know. Applying a BD pattern
-    // to every address would reject perfectly good foreign numbers, and
-    // accepting anything at all would let "0171" through to a courier as
-    // though it were a phone number.
-    if (address.countryCode.toUpperCase() !== "BD") return;
+    // The same helper the payment path uses to canonicalise the number it
+    // sends to Jomma, so the two cannot drift into disagreeing about what
+    // counts as a valid Bangladeshi mobile.
+    if (isDeliverablePhone(address.phone, address.countryCode)) return;
 
-    // Spaces and dashes are how people actually type a number; strip the
-    // formatting before judging it rather than making the buyer guess our
-    // preferred punctuation. +880 is the same number written for abroad.
-    const digits = address.phone.replace(/[\s-]/g, "").replace(/^\+?880/, "0");
-
-    if (!BD_MOBILE.test(digits)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["phone"],
-        message: "Enter a valid mobile number, like 01712345678.",
-      });
-    }
+    ctx.addIssue({
+      code: "custom",
+      path: ["phone"],
+      message: "Enter a valid mobile number, like 01712345678.",
+    });
   });
 
 const checkoutSchema = z.object({
@@ -206,27 +195,28 @@ export async function placeOrderAction(
       // converting per order.
       amountMinorUnits: result.totalCents,
       provider: method === "any" ? "any" : method,
-      // ── Deliberately not sending the checkout phone ──────────────────────
+      // ── A suggestion, since Jomma 1.4.19 ────────────────────────────────
       //
-      // It is tempting, because Jomma matches faster with a declared sender.
-      // But the number collected at checkout is a *delivery* number, and the
-      // number money arrives from is the *payer's*. A parcel going to a
-      // recipient paid for by somebody else is an ordinary Bangladeshi
-      // transaction, not an edge case.
+      // This was null for a while, and the reason is worth keeping. Jomma used
+      // to treat a populated payerMsisdn as settled fact — `payerKnown` was a
+      // plain Boolean over the column, and the pay page skipped the step that
+      // asks. A delivery number sent here therefore became the answer without
+      // anyone being asked, and payments from any other handset failed to
+      // auto-match with nothing visibly wrong on either side.
       //
-      // What makes sending it actively wrong rather than merely imprecise is
-      // how Jomma treats a populated payerMsisdn: pay-page.ts derives
-      // `payerKnown: Boolean(row.payerMsisdn)` and the pay client skips the
-      // step that asks. So a delivery number sent here does not become a hint
-      // Jomma might check — it becomes the answer, unasked, and every payment
-      // from a different handset then fails to auto-match while looking
-      // correctly configured from both sides.
+      // 1.4.19 records who supplied the number and asks the buyer to confirm
+      // it, so the guess is now correctable by the only person who knows. That
+      // makes sending it strictly better than not: payer_msisdn is worth 60
+      // points to the matcher, and a confirmed one is the difference between
+      // an order settling by itself and one sitting in manual review.
       //
-      // Null instead, so the pay page asks the buyer, who is the only party
-      // that knows. Jomma is being changed to pre-fill this from the order and
-      // ask the buyer to confirm it; once that ships, pass the phone here
-      // again — the value is genuinely useful as a *suggestion*.
-      payerMsisdn: null,
+      // Canonicalised first. The buyer may have typed "017 1234 5678" or
+      // "+8801712345678", and Jomma validates against a bare 01XXXXXXXXX — so
+      // sending what was typed would fail its check for a number that is
+      // perfectly correct. Null for a non-Bangladeshi address, which is honest
+      // rather than lossy: there is no BD mobile to suggest, and the pay page
+      // asks as it did before.
+      payerMsisdn: normaliseBdMobile(parsed.data.shippingAddress.phone),
       returnUrl: absoluteUrl(`/orders/${result.orderId}?awaiting=1`),
       cancelUrl: absoluteUrl("/cart"),
       attempt: 1,

@@ -33,7 +33,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
     "@base-ui/react": "^1.7.0",
-    "@jomma/sdk": "^1.4.5",
+    "@jomma/sdk": "^1.4.19",
     "@tanstack/react-virtual": "^3.14.10",
     "better-auth": "1.7.2",
     "class-variance-authority": "^0.7.1",

@@ -52,20 +52,22 @@ export async function startPayment(input: {
   amountMinorUnits: number;
   provider: ProviderPreference;
   /**
-   * The number the buyer will send money FROM. Not their delivery number.
+   * A *suggested* number for the buyer to pay from, in canonical
+   * `01XXXXXXXXX` form. Null when there is nothing sensible to suggest.
    *
-   * Null is the right value whenever the caller is not certain, and certainty
-   * is rarer than it looks: the phone taken at checkout belongs to whoever
-   * receives the parcel, which is often not whoever pays for it.
+   * Since Jomma 1.4.19 this is a suggestion rather than an assertion: the pay
+   * page shows it masked, asks the buyer to confirm, and lets them replace it.
+   * Before that it was taken as settled fact and the question was skipped,
+   * which is why a delivery number sent here used to break auto-matching for
+   * anyone paying from a different handset.
    *
-   * Passing a value here is not a hint. Jomma reads a populated payerMsisdn as
-   * settled fact — `payerKnown` on the pay page is a plain Boolean over this
-   * field — and skips asking the buyer. So a guess sent here is silently
-   * adopted as the answer, and payments from any other handset fail to
-   * auto-match with nothing visibly misconfigured anywhere.
+   * Worth sending now: the matcher scores a known payer number at 60 points,
+   * so a confirmed one is often the difference between an order settling by
+   * itself and one waiting in manual review.
    *
-   * Null costs one screen on the pay page and gets the number from the only
-   * party who actually knows it.
+   * Canonicalise before passing it. Jomma validates a bare 01XXXXXXXXX, so
+   * "017 1234 5678" or "+8801712345678" — both things buyers actually type —
+   * would be rejected for a number that is perfectly correct.
    */
   payerMsisdn: string | null;
   returnUrl: string;
