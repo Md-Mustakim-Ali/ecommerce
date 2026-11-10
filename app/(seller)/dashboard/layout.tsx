@@ -34,7 +34,10 @@ export default async function SellerLayout({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 border-border border-b bg-surface-1/95 backdrop-blur">
+      <header
+        data-print-hide
+        className="sticky top-0 z-20 border-border border-b bg-surface-1/95 backdrop-blur"
+      >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
           {/*
             A breadcrumb rather than a bare title, because /dashboard is the

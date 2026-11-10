@@ -50,7 +50,10 @@ export function SiteHeader({
   }
 
   return (
-    <header className="scroll-condense sticky top-0 z-30 border-border border-b bg-surface-0/90 backdrop-blur">
+    <header
+      data-print-hide
+      className="scroll-condense sticky top-0 z-30 border-border border-b bg-surface-0/90 backdrop-blur"
+    >
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6">
         {/* Mobile: the drawer trigger. Desktop gets the category row below. */}
         <div className="md:hidden">

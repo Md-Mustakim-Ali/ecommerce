@@ -1,4 +1,4 @@
-import { CheckCircle2, Loader2, Package } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Package } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -93,9 +93,24 @@ export default async function OrderPage({
             Placed {order.placedAt?.toLocaleDateString() ?? "—"}
           </p>
         </div>
-        <Badge variant={order.status === "paid" ? "positive" : "neutral"}>
-          {order.status}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant={order.status === "paid" ? "positive" : "neutral"}>
+            {order.status}
+          </Badge>
+          {/*
+            Offered whatever the order's state. An unpaid invoice is the normal
+            thing to want before paying by transfer, and the document itself
+            says which it is rather than relying on this button to gate it.
+          */}
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href={`/orders/${order.id}/invoice`} />}
+          >
+            <FileText aria-hidden className="size-4" />
+            Invoice
+          </Button>
+        </div>
       </div>
 
       {/*

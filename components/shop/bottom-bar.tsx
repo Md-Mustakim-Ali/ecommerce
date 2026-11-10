@@ -44,6 +44,7 @@ export function BottomBar({
 
   return (
     <nav
+      data-print-hide
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-30 flex border-border border-t bg-surface-1/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
     >

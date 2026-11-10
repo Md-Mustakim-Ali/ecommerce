@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, Loader2, MessageSquare } from "lucide-react";
+import { ChevronDown, FileText, Loader2, MessageSquare } from "lucide-react";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -168,6 +169,23 @@ export function OrderRow({
         <Badge variant={badge.variant}>{badge.label}</Badge>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/*
+            Always present, whatever the order's state. A seller needs the
+            document to put in the parcel before it ships and to attach to a
+            warranty query long after, so gating it on "paid" would withhold it
+            at both of the moments it is actually wanted.
+          */}
+          <Button
+            size="sm"
+            variant="ghost"
+            render={
+              <Link href={`/dashboard/${storeId}/orders/${order.id}/invoice`} />
+            }
+          >
+            <FileText aria-hidden className="size-3.5" />
+            Invoice
+          </Button>
+
           {permissions.accept && order.status === "pending" ? (
             <Button
               size="sm"

@@ -47,7 +47,10 @@ export default async function ShopLayout({ children }: LayoutProps<"/">) {
 
         <main className="flex-1 pb-24 md:pb-12">{children}</main>
 
-        <footer className="hidden border-border border-t px-6 py-8 md:block">
+        <footer
+          data-print-hide
+          className="hidden border-border border-t px-6 py-8 md:block"
+        >
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 text-secondary-text text-sm">
             <span>Marketplace</span>
             <span className="text-tertiary-text text-xs">

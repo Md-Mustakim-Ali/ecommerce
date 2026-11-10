@@ -876,3 +876,71 @@ html.dark {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Print
+
+   Only the invoice is designed to be printed, but these rules are global
+   because a browser will happily print any page and the result should not be
+   embarrassing.
+
+   The invoice itself sets black-on-white explicitly rather than relying on
+   print defaults, so what is on screen is what comes out of the printer —
+   including in dark mode, where inheriting the theme would produce either an
+   unreadable sheet or an empty cartridge.
+--------------------------------------------------------------------------- */
+@media print {
+  /* Margins belong to the page box, not the element. Setting them here means
+     the invoice can run to a second sheet and still be inset correctly, which
+     padding on the article cannot do. */
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+    /* Printers do not render shadows, and the compositing they trigger can
+       make a long table paginate strangely. */
+    box-shadow: none;
+  }
+
+  /* Chrome and Safari strip backgrounds by default, which turns the paid
+     badge into white text on white paper. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Anything the reader cannot act on from paper: site header, bottom tab
+     bar, footer, the dashboard shell.
+
+     One attribute rather than a list of selectors matching each layout's
+     markup. The list version was written first and matched nothing — every
+     selector named an attribute no component actually set — so the storefront
+     chrome printed on top of the invoice while the CSS looked correct. An
+     attribute is greppable, and a new layout that forgets it fails visibly
+     rather than silently. */
+  /* biome-ignore-start lint/complexity/noImportantStyles: every element this
+     targets carries Tailwind display utilities — sticky, flex, md:block — and
+     a plain `display: none` in a layer below utilities loses to all of them.
+     The chrome would print regardless of the rule appearing to be there,
+     which is the failure this attribute was introduced to fix. */
+  [data-print-hide] {
+    display: none !important;
+  }
+  /* biome-ignore-end lint/complexity/noImportantStyles: end of chrome hiding */
+
+  /* A row split across a page break is unreadable, and a heading stranded at
+     the foot of a page is worse. */
+  tr,
+  img {
+    break-inside: avoid;
+  }
+
+  h1,
+  h2 {
+    break-after: avoid;
+  }
+}
