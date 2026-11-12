@@ -45,6 +45,8 @@ const recordOrderPaid = vi.fn(async () => ({ recorded: true, entries: 2 }));
 const recordOrderReversed = vi.fn(async () => ({ recorded: true, entries: 2 }));
 const sendOrderConfirmation = vi.fn(async () => {});
 const releaseOrderStock = vi.fn(async () => ({ released: true }));
+/** The event carries one trx_id; the full breakdown comes from a fetch. */
+const fetchAndPersistAppliedPayments = vi.fn(async () => {});
 
 vi.mock("@/lib/db", () => {
   const insert = () => ({
@@ -79,6 +81,9 @@ vi.mock("@/lib/db", () => {
 vi.mock("@/lib/money/ledger", () => ({ recordOrderPaid, recordOrderReversed }));
 vi.mock("@/lib/email/notify", () => ({ sendOrderConfirmation }));
 vi.mock("@/lib/payments/jomma/release", () => ({ releaseOrderStock }));
+vi.mock("@/lib/payments/jomma/sync", () => ({
+  fetchAndPersistAppliedPayments,
+}));
 
 // The signature check is NOT mocked — the route runs the real constructEvent,
 // so these tests would also catch verification being bypassed.
@@ -151,6 +156,45 @@ describe("jomma webhook handler", () => {
       paymentIntentId: "int_test_1",
     });
     expect(sendOrderConfirmation).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores the transfers behind the event, not just its own trx_id", async () => {
+    await deliver(paymentEvent("evt_split", "payment.succeeded"));
+
+    // The event names one TrxID. On a split payment that is only whichever
+    // transfer completed the intent, so the record has to come from a fetch.
+    expect(fetchAndPersistAppliedPayments).toHaveBeenCalledWith(
+      ORDER_ID,
+      "int_test_1",
+    );
+  });
+
+  it("still fulfils when the transfer breakdown cannot be fetched", async () => {
+    fetchAndPersistAppliedPayments.mockRejectedValueOnce(
+      new Error("jomma down"),
+    );
+
+    const response = await deliver(
+      paymentEvent("evt_degraded", "payment.succeeded"),
+    );
+
+    // Losing the breakdown is recoverable — the order page fetches it again.
+    // Refusing to fulfil an order Jomma has confirmed is not.
+    expect(response.status).toBe(200);
+    expect(recordOrderPaid).toHaveBeenCalledTimes(1);
+  });
+
+  it("records the transfers behind a partial payment too", async () => {
+    await deliver(
+      paymentEvent("evt_partial_store", "payment.partial", {
+        received_amount: 40000,
+        shortfall: 35604,
+      }),
+    );
+
+    // The buyer needs to see what arrived while they still owe the balance.
+    expect(fetchAndPersistAppliedPayments).toHaveBeenCalledOnce();
+    expect(recordOrderPaid).not.toHaveBeenCalled();
   });
 
   it("is idempotent when the same event is redelivered", async () => {

@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  jommaAppliedPayments,
   orderItems,
   orderNotes,
   orders,
@@ -96,6 +97,35 @@ export async function getOrderForBuyer(input: {
       messages: messages.filter((row) => row.subOrderId === sub.id),
     })),
   };
+}
+
+/**
+ * The individual transfers that paid an order, oldest first.
+ *
+ * More than one row is a split payment — a buyer who sent part of the total and
+ * topped it up later. Each has its own TrxID and may have come from a different
+ * handset, which is precisely why this returns a list rather than the schema
+ * keeping one `trx_id` on the order and quietly losing the rest.
+ *
+ * Read from our own table, not from Jomma. The rows are written by the webhook
+ * and by the status poll; a page rendering an old order must not depend on a
+ * payment provider being reachable.
+ */
+export async function getAppliedPaymentsForOrder(orderId: string) {
+  return db
+    .select({
+      id: jommaAppliedPayments.id,
+      trxId: jommaAppliedPayments.trxId,
+      senderMsisdn: jommaAppliedPayments.senderMsisdn,
+      amountCents: jommaAppliedPayments.amountCents,
+      occurredAt: jommaAppliedPayments.occurredAt,
+      appliedAt: jommaAppliedPayments.appliedAt,
+      matchConfidence: jommaAppliedPayments.matchConfidence,
+      matchedBy: jommaAppliedPayments.matchedBy,
+    })
+    .from(jommaAppliedPayments)
+    .where(eq(jommaAppliedPayments.orderId, orderId))
+    .orderBy(asc(jommaAppliedPayments.appliedAt));
 }
 
 export async function listOrdersForBuyer(userId: string) {

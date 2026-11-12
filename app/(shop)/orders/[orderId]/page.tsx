@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Loader2, Package } from "lucide-react";
+import { CheckCircle2, FileText, Package, Receipt } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,9 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/guards";
 import { formatMoney } from "@/lib/money/format";
-import { getOrderForBuyer } from "@/lib/orders/queries";
+import {
+  getAppliedPaymentsForOrder,
+  getOrderForBuyer,
+} from "@/lib/orders/queries";
 import { DemoPayButton } from "./demo-pay";
 import { MessageThread } from "./message-thread";
+import { PaymentStatus } from "./payment-status";
 
 export const metadata: Metadata = { title: "Order" };
 
@@ -31,34 +35,33 @@ export default async function OrderPage({
   const justPlaced = query.placed === "1";
 
   /*
-    Where Jomma's hosted pay page sends the buyer back to.
+    Whether to watch this order's payment.
 
-    It is a plain GET. Anybody can type it, including somebody who never paid,
-    so it is allowed to say only that we are looking — never that the order is
-    settled. `order.status` below is read from the database, which only the
-    verified webhook writes, so the moment the payment is real this banner is
-    replaced by the actual state rather than by this page's opinion of it.
+    Not keyed on `?awaiting=1` any more, and that is the point. The query string
+    is set by Jomma's returnUrl, so an order the buyer reached any other way —
+    from their order list, from the emailed link, or after closing the tab and
+    coming back — used to get no waiting card at all and no way to find out it
+    had settled. The condition that matters is the order's own state, not how
+    the buyer happened to arrive.
+
+    `int_` distinguishes a real Jomma intent from the `manual_` ids the offline
+    provider writes into the same column; polling Jomma about one of those would
+    only ever 404.
   */
-  const awaitingPayment = query.awaiting === "1" && order.status === "pending";
+  const watchPayment =
+    order.status === "pending" && order.paymentIntentId?.startsWith("int_");
+
+  // Every transfer Jomma applied. More than one is a split payment.
+  const appliedPayments = await getAppliedPaymentsForOrder(order.id);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6">
-      {awaitingPayment ? (
-        <div className="flex items-start gap-3 rounded-xl bg-surface-2 p-5">
-          <Loader2
-            className="mt-0.5 size-5 shrink-0 animate-spin text-secondary-text"
-            aria-hidden
-          />
-          <div className="flex flex-col gap-1">
-            <p className="font-medium">Checking for your payment</p>
-            <p className="text-secondary-text text-sm">
-              We are waiting for confirmation from bKash or Nagad. This usually
-              takes under a minute. You do not need to send anything again —
-              refresh this page, and we will email {order.email} the moment it
-              clears.
-            </p>
-          </div>
-        </div>
+      {watchPayment ? (
+        <PaymentStatus
+          orderId={order.id}
+          currency={order.currency}
+          initialTotalCents={order.totalCents}
+        />
       ) : null}
 
       {justPlaced ? (
@@ -207,6 +210,76 @@ export default async function OrderPage({
           </span>
         </div>
       </section>
+
+      {/*
+        What actually paid for this.
+
+        Rendered as a list because a payment is not always one transfer. Somebody
+        who sends part of the total and tops it up later produces two, each with
+        its own TrxID and each possibly from a different handset — Jomma applies
+        both to the same intent and reports both. Showing only the last one would
+        hide half of what the buyer sent, and the TrxID is the first thing either
+        side reaches for when a payment is disputed.
+      */}
+      {appliedPayments.length > 0 ? (
+        <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-1 p-5">
+          <div className="flex items-center gap-2">
+            <Receipt className="size-4 text-tertiary-text" aria-hidden />
+            <h2 className="font-medium text-sm">
+              {appliedPayments.length > 1
+                ? `Payment · ${appliedPayments.length} transfers`
+                : "Payment"}
+            </h2>
+          </div>
+
+          <ul className="flex flex-col gap-3">
+            {appliedPayments.map((payment) => (
+              <li
+                key={payment.id}
+                className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-sm"
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span className="font-mono text-xs">
+                    {payment.trxId ?? "No transaction id"}
+                  </span>
+                  <span className="text-tertiary-text text-xs">
+                    {payment.senderMsisdn
+                      ? `From ${payment.senderMsisdn} · `
+                      : ""}
+                    {(payment.occurredAt ?? payment.appliedAt).toLocaleString()}
+                    {/* `manual` and `admin` mean a human resolved this rather
+                        than the matcher, which is worth saying plainly. */}
+                    {payment.matchedBy !== "automatic"
+                      ? ` · matched by ${payment.matchedBy}`
+                      : ""}
+                  </span>
+                </span>
+                <span className="tabular shrink-0">
+                  {formatMoney(payment.amountCents, order.currency)}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {appliedPayments.length > 1 ? (
+            <>
+              <Separator />
+              <div className="flex justify-between text-sm">
+                <span className="text-secondary-text">Total received</span>
+                <span className="tabular font-medium">
+                  {formatMoney(
+                    appliedPayments.reduce(
+                      (total, payment) => total + payment.amountCents,
+                      0,
+                    ),
+                    order.currency,
+                  )}
+                </span>
+              </div>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-2 text-sm">
         <h2 className="font-medium">Shipping to</h2>

@@ -7,6 +7,7 @@ import { sendOrderConfirmation } from "@/lib/email/notify";
 import { recordOrderPaid, recordOrderReversed } from "@/lib/money/ledger";
 import { jomma, jommaWebhookSecret } from "@/lib/payments/jomma/client";
 import { releaseOrderStock } from "@/lib/payments/jomma/release";
+import { fetchAndPersistAppliedPayments } from "@/lib/payments/jomma/sync";
 
 /**
  * Jomma's webhook.
@@ -115,6 +116,31 @@ async function handle(
     // Acknowledge rather than 404. Retrying an order we do not have will never
     // resolve itself, and the event row is already stored for investigation.
     return { handled: false, reason: "no matching order" };
+  }
+
+  /*
+    Pull the transfers behind this event before acting on it.
+
+    The event itself carries a single `trx_id`, which on a split payment is only
+    whichever transfer happened to complete the intent — the earlier ones are not
+    in the payload at all. `Intent.payments[]` has all of them, so the record of
+    what the buyer actually sent has to come from a fetch, not from the event.
+
+    Best-effort on purpose: this must never turn a payment we have been told
+    about into a 500 and a retry loop. Losing the breakdown is recoverable — the
+    order page's poll fetches it again — whereas failing to fulfil an order that
+    Jomma has confirmed is not.
+  */
+  if (event.data.intent_id) {
+    try {
+      await fetchAndPersistAppliedPayments(order.id, event.data.intent_id);
+    } catch (error) {
+      console.error("[jomma] could not store applied payments", {
+        orderId: order.id,
+        intentId: event.data.intent_id,
+        error,
+      });
+    }
   }
 
   switch (event.type) {

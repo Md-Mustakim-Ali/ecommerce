@@ -82,6 +82,23 @@ produces `75603.99999999999`.
 4. Buyer sends money from their phone.
 5. Jomma matches it and POSTs a signed webhook.
 6. `/api/webhooks/jomma` verifies, dedupes, and fulfils.
+7. **In parallel**, the order page polls `intents.get()` every three seconds
+   while the order is pending, and settles it if the webhook never arrives.
+
+### Why there is a pull half as well as a push half
+
+Push has one failure mode that matters: it does not arrive. A rotated secret, an
+unregistered hostname, an endpoint that was down for the whole retry window —
+in each case Jomma knows the money arrived and this application never finds out.
+The order then sits `pending` forever, holding stock, behind a page that claims
+to be checking.
+
+`lib/payments/jomma/sync.ts` closes that. It is allowed to mark an order paid,
+and that does **not** weaken the rule below: what settles the order is an
+authenticated server-to-server GET carrying `JOMMA_API_KEY`, not anything the
+browser said. Jomma is the witness either way; only the direction differs. The
+write goes through the same `recordOrderPaid`, which locks the order row, so a
+poll racing a webhook credits the seller once and emails once.
 
 ### The phone number is not optional
 
@@ -93,10 +110,17 @@ pay page asks for it if we still do not have one.
 
 ## Rules this integration is built on
 
-**The webhook is the only proof of payment.** `returnUrl` is a plain GET that
-anybody can type. The order page it lands on says "checking for your payment"
-and reads `order.status` from the database — which only the verified webhook
-writes. Nothing about arriving there marks anything paid.
+**Only Jomma can prove a payment — never the browser.** `returnUrl` is a plain
+GET that anybody can type, so landing on it marks nothing. Two things may settle
+an order, and both are Jomma speaking directly to this server: a signed webhook,
+or an authenticated `intents.get()` reporting the intent matched. Neither
+involves trusting the buyer's tab.
+
+**The spinner must be attached to something.** The waiting card polls; it does
+not merely animate. This was the original bug in this integration — a
+server-rendered `animate-spin` over a page that had finished rendering, which
+looked identical whether the payment had settled a minute ago or had never been
+sent. If you ever render progress here, make sure something is progressing.
 
 **Verify before parsing.** `constructEvent` runs on the raw request body before
 anything is parsed, in every environment, with no development bypass. The 400
@@ -125,7 +149,7 @@ order by created_at desc;
 | Event | What happens |
 |---|---|
 | `payment.succeeded` | Amount is checked against the order, then `recordOrderPaid` credits the seller, debits commission, and emails the receipt. |
-| `payment.partial` | **Not fulfilled.** Logged with the shortfall. The intent stays open, so a later top-up produces `payment.succeeded`. |
+| `payment.partial` | **Not fulfilled.** The transfers so far are stored, and the order page shows the buyer the shortfall and a link to pay the balance. The intent stays open, so a top-up produces `payment.succeeded`. |
 | `payment.overpaid` | Fulfilled — they paid at least what was asked — and the excess is logged loudly as a debt owed back to the buyer. |
 | `payment.expired` | Releases the reserved stock, but only from `pending`. |
 | `payment.cancelled` | Same as expired. |
@@ -171,6 +195,68 @@ timestamp, a future timestamp, and the re-serialisation mistake.
 covers idempotency across three deliveries of one event, plus each event type.
 The signature check is *not* mocked there, so those tests would also catch
 verification being bypassed.
+
+## Split payments
+
+A buyer who sends ৳400 against a ৳900 order and tops up the balance later
+produces **two** transfers, with two TrxIDs, possibly from two handsets. Jomma
+applies both to the same intent and reports both in `Intent.payments[]`.
+
+`jomma_applied_payments` stores them, one row per transfer, and the order page
+lists them. Two things follow from the array being the source of truth:
+
+- **Never read the breakdown off a webhook event.** `PaymentEventData` carries a
+  single `trx_id`, which on a split is only the transfer that happened to
+  complete the intent. The earlier ones are not in the payload at all. The route
+  therefore calls `intents.get()` on every payment event.
+- **The unique index is on `(intent_id, coalesce(trx_id,''), applied_at)`.** The
+  `coalesce` is load-bearing: `trx_id` is nullable for admin-resolved payments,
+  Postgres treats NULLs as distinct, and without it every poll would insert
+  another copy.
+
+## Why no webhook ever arrived
+
+Diagnosed 2026-09-09 and fixed on the Jomma side. Recorded here because the
+symptom — an order stuck `pending` behind a spinner — points at this application
+first, and the next person to see it should not re-derive the whole chain.
+
+**Three faults were stacked.** Every one of them had to be fixed before a single
+webhook could land, which is why the failure was total and silent.
+
+1. **`pg-boss` had never created its schema**, so no scheduled worker had ever
+   run against that instance — not once. Expiry sweeps, webhook delivery and
+   every health alert all live behind it. This was the root cause of both the
+   stale `open` status and the missing deliveries.
+2. **`JOMMA_MODE=service` refuses localhost delivery targets** as an SSRF guard,
+   correctly for a multi-merchant instance. So even with the worker running, a
+   shop on `localhost:3300` would have received nothing. Self-hosting wants
+   `JOMMA_MODE=single`.
+3. **The registered endpoint was wrong** — `localhost:4000/webhooks/jomma`,
+   the wrong port *and* the wrong path. It must be
+   `http://<host>/api/webhooks/jomma`; see the Webhook endpoint section above.
+
+### What stayed, and why
+
+`syncOrderPayment` still derives `expired` from `expires_at` rather than reading
+`intent.status`, even though Jomma now sweeps on read and returns `expired`
+correctly. That is deliberate belt-and-braces: the whole failure above was a
+scheduler that was never running, and a deadline that has visibly passed is
+something this application can evaluate without depending on anything remote.
+
+The polling in `lib/actions/payment-status.ts` is load-bearing for the same
+reason. It is what let two orders show correct state while zero webhooks were
+being delivered.
+
+### One claim that did not survive
+
+An earlier version of this file said the hosted pay page had shown a success
+state for an intent the API reported as `open`. **That mechanism was refuted**
+by reading Jomma's source: the receipt renders only from a server-side `matched`
+or `over`, and there is no optimistic path. The buyer's receipt was truthful;
+the notification simply never left. The matched intent could not be produced to
+prove it either way, so this is the best-supported reading rather than a
+demonstrated one — noted rather than deleted, because a payment product showing
+an unearned success would be serious enough to re-investigate if it recurs.
 
 ## Out of scope, for later
 
