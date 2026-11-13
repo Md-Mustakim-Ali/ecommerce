@@ -1,12 +1,14 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { saveAddressAction } from "@/lib/actions/addresses";
 import { placeOrderAction } from "@/lib/actions/checkout";
 import { checkDiscountAction } from "@/lib/actions/discounts";
 import type { CartSummary } from "@/lib/cart";
@@ -61,11 +63,68 @@ const METHODS = [
   },
 ];
 
+/** A row from the buyer's address book. Empty for guests. */
+export type SavedCheckoutAddress = {
+  id: string;
+  label: string | null;
+  recipientName: string;
+  phone: string | null;
+  line1: string;
+  line2: string | null;
+  city: string;
+  region: string | null;
+  postalCode: string;
+  countryCode: string;
+  isDefaultShipping: boolean;
+};
+
+/** What actually gets submitted, whichever way the buyer arrived at it. */
+type AddressFields = {
+  recipientName: string;
+  phone: string;
+  line1: string;
+  line2: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  countryCode: string;
+};
+
+const EMPTY_ADDRESS: AddressFields = {
+  recipientName: "",
+  phone: "",
+  line1: "",
+  line2: "",
+  city: "",
+  region: "",
+  postalCode: "",
+  countryCode: "",
+};
+
+/** The "somewhere else" choice. Deliberately not a uuid, so it cannot collide. */
+const NEW_ADDRESS = "new";
+
+function toFields(address: SavedCheckoutAddress): AddressFields {
+  return {
+    recipientName: address.recipientName,
+    // Optional in the address book, required to deliver — so a saved address
+    // without one still has to be asked about before this order can be placed.
+    phone: address.phone ?? "",
+    line1: address.line1,
+    line2: address.line2 ?? "",
+    city: address.city,
+    region: address.region ?? "",
+    postalCode: address.postalCode,
+    countryCode: address.countryCode,
+  };
+}
+
 export function CheckoutForm({
   cart,
   shippingCents,
   defaultEmail,
-  defaultAddress,
+  savedAddresses,
+  signedIn,
   jommaAvailable,
 }: {
   cart: CartSummary;
@@ -73,21 +132,56 @@ export function CheckoutForm({
   defaultEmail: string;
   /** Whether bKash/Nagad can be offered. Decided on the server. */
   jommaAvailable: boolean;
-  /** The buyer's saved default, pre-filled. Null for guests. */
-  defaultAddress: {
-    recipientName: string;
-    phone: string | null;
-    line1: string;
-    line2: string | null;
-    city: string;
-    region: string | null;
-    postalCode: string;
-    countryCode: string;
-  } | null;
+  /** The buyer's address book, default first. Empty for guests. */
+  savedAddresses: SavedCheckoutAddress[];
+  /** Whether there is an account to save a new address into. */
+  signedIn: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  /**
+   * Address selection.
+   *
+   * The saved default is preselected, which is what the old pre-fill did — the
+   * difference is that the other saved addresses are now reachable without
+   * retyping one over the top of another.
+   *
+   * `fields` is the address being submitted, not the address book. Editing it
+   * changes this order only; the saved row is written from /account/addresses
+   * or from the save-for-next-time offer below, never as a side effect of
+   * correcting a postcode at checkout.
+   */
+  const preselected =
+    savedAddresses.find((address) => address.isDefaultShipping) ??
+    savedAddresses[0] ??
+    null;
+  const [selectedId, setSelectedId] = useState(preselected?.id ?? NEW_ADDRESS);
+  const [fields, setFields] = useState<AddressFields>(
+    preselected ? toFields(preselected) : EMPTY_ADDRESS,
+  );
+  // What was typed into the "somewhere else" form, kept across a detour to a
+  // saved address so a half-filled address is not silently thrown away.
+  const [draft, setDraft] = useState<AddressFields>(EMPTY_ADDRESS);
+  const [editing, setEditing] = useState(false);
+  const [saveToAccount, setSaveToAccount] = useState(false);
+
+  const selected =
+    savedAddresses.find((address) => address.id === selectedId) ?? null;
+  const enteringNew = selectedId === NEW_ADDRESS;
+
+  function selectAddress(id: string) {
+    if (enteringNew) setDraft(fields);
+    const address = savedAddresses.find((saved) => saved.id === id) ?? null;
+    setFields(address ? toFields(address) : draft);
+    setSelectedId(id);
+    setEditing(false);
+  }
+
+  function setField(name: keyof AddressFields, value: string) {
+    setFields((current) => ({ ...current, [name]: value }));
+  }
 
   const [discount, setDiscount] = useState<{
     code: string;
@@ -120,6 +214,14 @@ export function CheckoutForm({
     setError(null);
     const data = new FormData(event.currentTarget);
 
+    // Read from state rather than the form, because a selected saved address
+    // has its inputs collapsed and an unmounted input contributes nothing to
+    // FormData.
+    const shippingAddress = {
+      ...fields,
+      countryCode: fields.countryCode.toUpperCase(),
+    };
+
     startTransition(async () => {
       const result = await placeOrderAction({
         discountCode: discount?.code,
@@ -127,21 +229,29 @@ export function CheckoutForm({
         // a method; it does not get to name anything about the money.
         paymentMethod: method,
         email: String(data.get("email") ?? ""),
-        shippingAddress: {
-          recipientName: String(data.get("recipientName") ?? ""),
-          phone: String(data.get("phone") ?? ""),
-          line1: String(data.get("line1") ?? ""),
-          line2: String(data.get("line2") ?? ""),
-          city: String(data.get("city") ?? ""),
-          region: String(data.get("region") ?? ""),
-          postalCode: String(data.get("postalCode") ?? ""),
-          countryCode: String(data.get("countryCode") ?? "").toUpperCase(),
-        },
+        shippingAddress,
       });
 
       if (!result.ok) {
         setError(result.message);
         return;
+      }
+
+      // Only once the order exists, and never allowed to break it. The buyer
+      // came here to buy; a full address book or a rejected field must not
+      // turn a placed order into an error message on this page.
+      if (saveToAccount && enteringNew) {
+        try {
+          await saveAddressAction({
+            ...shippingAddress,
+            // Their only address. Making it the default now saves a trip to
+            // the address book to say the obvious thing.
+            isDefaultShipping: savedAddresses.length === 0,
+          });
+        } catch {
+          // Nothing to tell the buyer. The order is placed either way, and the
+          // address can be saved from /account/addresses.
+        }
       }
 
       if (result.redirectUrl) {
@@ -181,82 +291,215 @@ export function CheckoutForm({
         <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface-1 p-5">
           <h2 className="font-medium">Shipping address</h2>
 
-          <div className="grid gap-2">
-            <Label htmlFor="recipientName">Full name</Label>
-            <Input
-              id="recipientName"
-              name="recipientName"
-              defaultValue={defaultAddress?.recipientName ?? ""}
-              autoComplete="name"
-              required
-            />
-          </div>
+          {/*
+            The address book, as a choice rather than a pre-fill.
 
-          <div className="grid gap-2">
-            <Label htmlFor="line1">Address</Label>
-            <Input
-              id="line1"
-              name="line1"
-              defaultValue={defaultAddress?.line1 ?? ""}
-              autoComplete="address-line1"
-              required
-            />
-          </div>
+            Checkout used to copy the default address into the fields and leave
+            the buyer to overwrite it, which made every other saved address
+            invisible: someone shipping to work had to retype it over their
+            home address on every order.
+          */}
+          {savedAddresses.length > 0 ? (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="sr-only">Deliver to</legend>
 
-          <div className="grid gap-2">
-            <Label htmlFor="line2">Apartment, suite (optional)</Label>
-            <Input
-              id="line2"
-              name="line2"
-              defaultValue={defaultAddress?.line2 ?? ""}
-              autoComplete="address-line2"
-            />
-          </div>
+              {savedAddresses.map((address) => (
+                <label
+                  key={address.id}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-lg border p-3",
+                    selectedId === address.id
+                      ? "border-accent bg-accent-muted"
+                      : "border-border hover:bg-surface-2",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="savedAddress"
+                    value={address.id}
+                    checked={selectedId === address.id}
+                    onChange={() => selectAddress(address.id)}
+                    className="mt-1 accent-[var(--accent)]"
+                  />
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex flex-wrap items-center gap-2 font-medium text-sm">
+                      {address.label ?? address.recipientName}
+                      {address.isDefaultShipping ? (
+                        <Badge variant="muted">
+                          <Star aria-hidden /> Default
+                        </Badge>
+                      ) : null}
+                    </span>
+                    <span className="text-secondary-text text-xs leading-relaxed">
+                      {address.recipientName}, {address.line1}
+                      {address.line2 ? `, ${address.line2}` : ""}
+                      <br />
+                      {address.city}
+                      {address.region ? `, ${address.region}` : ""}{" "}
+                      {address.postalCode}, {address.countryCode}
+                    </span>
+                  </span>
+                </label>
+              ))}
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label htmlFor="city">City</Label>
-              <Input
-                id="city"
-                name="city"
-                defaultValue={defaultAddress?.city ?? ""}
-                autoComplete="address-level2"
-                required
-              />
+              <label
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3",
+                  enteringNew
+                    ? "border-accent bg-accent-muted"
+                    : "border-border hover:bg-surface-2",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="savedAddress"
+                  value={NEW_ADDRESS}
+                  checked={enteringNew}
+                  onChange={() => selectAddress(NEW_ADDRESS)}
+                  className="mt-1 accent-[var(--accent)]"
+                />
+                <span className="flex flex-col gap-0.5">
+                  <span className="flex items-center gap-2 font-medium text-sm">
+                    <Plus className="size-4" aria-hidden />
+                    Ship somewhere else
+                  </span>
+                  <span className="text-secondary-text text-xs">
+                    Enter an address for this order.
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+          ) : null}
+
+          {selected && !editing ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(true)}
+              >
+                Edit for this order
+              </Button>
+              <p className="text-tertiary-text text-xs">
+                Corrections apply to this order. Your saved address stays as it
+                is.
+              </p>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="region">Region</Label>
-              <Input
-                id="region"
-                name="region"
-                defaultValue={defaultAddress?.region ?? ""}
-                autoComplete="address-level1"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="postalCode">Postcode</Label>
-              <Input
-                id="postalCode"
-                name="postalCode"
-                defaultValue={defaultAddress?.postalCode ?? ""}
-                autoComplete="postal-code"
-                required
-              />
-            </div>
-          </div>
+          ) : null}
 
-          <div className="grid gap-2 sm:max-w-40">
-            <Label htmlFor="countryCode">Country code</Label>
-            <Input
-              id="countryCode"
-              name="countryCode"
-              defaultValue={defaultAddress?.countryCode ?? ""}
-              autoComplete="country"
-              placeholder="US"
-              maxLength={2}
-              required
-            />
-          </div>
+          {/*
+            Hidden, not just unused, while a saved address is selected. The
+            submitted address is read from state for exactly this reason.
+          */}
+          {selected && !editing ? null : (
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="recipientName">Full name</Label>
+                <Input
+                  id="recipientName"
+                  name="recipientName"
+                  value={fields.recipientName}
+                  onChange={(event) =>
+                    setField("recipientName", event.target.value)
+                  }
+                  autoComplete="name"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="line1">Address</Label>
+                <Input
+                  id="line1"
+                  name="line1"
+                  value={fields.line1}
+                  onChange={(event) => setField("line1", event.target.value)}
+                  autoComplete="address-line1"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="line2">Apartment, suite (optional)</Label>
+                <Input
+                  id="line2"
+                  name="line2"
+                  value={fields.line2}
+                  onChange={(event) => setField("line2", event.target.value)}
+                  autoComplete="address-line2"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    name="city"
+                    value={fields.city}
+                    onChange={(event) => setField("city", event.target.value)}
+                    autoComplete="address-level2"
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="region">Region</Label>
+                  <Input
+                    id="region"
+                    name="region"
+                    value={fields.region}
+                    onChange={(event) => setField("region", event.target.value)}
+                    autoComplete="address-level1"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="postalCode">Postcode</Label>
+                  <Input
+                    id="postalCode"
+                    name="postalCode"
+                    value={fields.postalCode}
+                    onChange={(event) =>
+                      setField("postalCode", event.target.value)
+                    }
+                    autoComplete="postal-code"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:max-w-40">
+                <Label htmlFor="countryCode">Country code</Label>
+                <Input
+                  id="countryCode"
+                  name="countryCode"
+                  value={fields.countryCode}
+                  onChange={(event) =>
+                    setField("countryCode", event.target.value)
+                  }
+                  autoComplete="country"
+                  placeholder="US"
+                  maxLength={2}
+                  required
+                />
+              </div>
+
+              {editing && selected ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="self-start"
+                  onClick={() => {
+                    setFields(toFields(selected));
+                    setEditing(false);
+                  }}
+                >
+                  Undo changes
+                </Button>
+              ) : null}
+            </div>
+          )}
 
           {/*
             A delivery number, and only that.
@@ -270,13 +513,20 @@ export function CheckoutForm({
 
             The number to pay from is asked for on the pay page, where the
             question can actually be answered.
+
+            Asked for outside the collapsed block, always. A phone number is
+            optional in the address book and required to deliver, so a saved
+            address can arrive here without one — and hiding the field behind
+            "Edit for this order" would fail the order at the server with an
+            error pointing at a field nobody can see.
           */}
           <div className="grid gap-2">
             <Label htmlFor="phone">Phone</Label>
             <Input
               id="phone"
               name="phone"
-              defaultValue={defaultAddress?.phone ?? ""}
+              value={fields.phone}
+              onChange={(event) => setField("phone", event.target.value)}
               type="tel"
               inputMode="tel"
               autoComplete="tel"
@@ -287,6 +537,23 @@ export function CheckoutForm({
               The courier will call this number to deliver your order.
             </p>
           </div>
+
+          {/*
+            Offered last, once there is a whole address to save, and only for a
+            new one — a saved address that was corrected for this delivery is
+            not a second address worth keeping.
+          */}
+          {signedIn && enteringNew ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={saveToAccount}
+                onChange={(event) => setSaveToAccount(event.target.checked)}
+                className="size-4 accent-accent"
+              />
+              Save this address to my account
+            </label>
+          ) : null}
         </section>
 
         {jommaAvailable ? (
