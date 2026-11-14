@@ -338,7 +338,9 @@ async function notifyBuyerOfMessage(subOrderId: string, body: string) {
     .where(eq(subOrders.id, subOrderId))
     .limit(1);
 
-  if (!row) return;
+  // See fulfilment.ts: a phone-only buyer has no address to notify. The
+  // message is on their order page either way.
+  if (!row?.email) return;
 
   await sendEmail(
     buyerMessageNotice({

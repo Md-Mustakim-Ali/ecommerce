@@ -65,13 +65,54 @@ const addressSchema = z
     });
   });
 
-const checkoutSchema = z.object({
-  email: z.email("Enter a valid email"),
-  shippingAddress: addressSchema,
-  /** Optional. Re-evaluated here; the browser's figure is never trusted. */
-  discountCode: z.string().trim().max(60).optional(),
-  paymentMethod: z.enum(paymentMethods).default("manual"),
-});
+const checkoutSchema = z
+  .object({
+    /**
+     * Contact details. At least one, never neither.
+     *
+     * Email stopped being mandatory when phone became an account identifier.
+     * A buyer who does not use email was previously forced to invent an
+     * address, which produced a receipt sent nowhere and a contact that
+     * matches nothing — so the order could never be found again, by them or
+     * by support.
+     */
+    email: z.union([z.email("Enter a valid email"), z.literal("")]).optional(),
+    /**
+     * The buyer's own number, not the courier's.
+     *
+     * `shippingAddress.phone` is where the parcel goes and is routinely
+     * somebody else — the recipient. This is who bought it, and it is what
+     * their account will claim this order by once they verify it.
+     */
+    contactPhone: z.string().trim().max(40).optional(),
+    shippingAddress: addressSchema,
+    /** Optional. Re-evaluated here; the browser's figure is never trusted. */
+    discountCode: z.string().trim().max(60).optional(),
+    paymentMethod: z.enum(paymentMethods).default("manual"),
+  })
+  .superRefine((input, ctx) => {
+    const email = input.email?.trim() ?? "";
+    const phone = input.contactPhone?.trim() ?? "";
+
+    if (!email && !phone) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["email"],
+        message: "Enter an email or a phone number so we can reach you.",
+      });
+      return;
+    }
+
+    // Only when one was given. An empty phone is a buyer who chose email,
+    // not a buyer who typed their number wrong.
+    if (phone && !normaliseBdMobile(phone)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["contactPhone"],
+        message: "Enter a valid mobile number, like 01712345678.",
+      });
+    }
+  });
 
 export type CheckoutResult =
   | {
@@ -95,6 +136,22 @@ export async function placeOrderAction(
   }
 
   const session = await getSession();
+
+  /**
+   * Canonicalised once, here, and used for everything downstream.
+   *
+   * The buyer may have typed "+880 171 234 5678"; the account they make later
+   * will hold "01712345678". Storing what was typed would mean an order that
+   * never matches its own buyer — the claim would silently find nothing, which
+   * is the worst kind of failure because the order simply never appears.
+   *
+   * Empty string is normalised to null so the check constraint sees the
+   * absence rather than a blank that satisfies IS NOT NULL.
+   */
+  const contactEmail = parsed.data.email?.trim() || null;
+  const contactPhone = parsed.data.contactPhone
+    ? normaliseBdMobile(parsed.data.contactPhone)
+    : null;
 
   // Before any work, and keyed on the account when there is one so a signed-in
   // attacker cannot get a fresh allowance by changing address. Card testing —
@@ -136,7 +193,8 @@ export async function placeOrderAction(
       cart,
       shippingCents,
       userId: session?.user.id ?? null,
-      email: parsed.data.email,
+      email: contactEmail,
+      phone: contactPhone,
     });
 
     // A code that has expired between the preview and the submit stops the
@@ -156,7 +214,8 @@ export async function placeOrderAction(
   const result = await placeOrder({
     cartId,
     buyerId: session?.user.id ?? null,
-    email: parsed.data.email,
+    email: contactEmail,
+    contactPhone,
     shippingAddress: parsed.data.shippingAddress,
     currency: CURRENCY,
     shippingCents,
@@ -255,7 +314,7 @@ export async function placeOrderAction(
     orderId: result.orderId,
     amountCents: result.totalCents,
     currency: CURRENCY,
-    buyerEmail: parsed.data.email,
+    buyerEmail: contactEmail,
     idempotencyKey: `order:${result.orderId}`,
     metadata: { orderNumber: result.orderNumber },
   });

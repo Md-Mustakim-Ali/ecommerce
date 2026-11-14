@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { CartSummary } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { discountCodes, discountRedemptions } from "@/lib/db/schema";
@@ -18,6 +18,8 @@ export async function resolveDiscountForCart(input: {
   shippingCents: number;
   userId: string | null;
   email: string | null;
+  /** Canonical `01XXXXXXXXX`. Null when the buyer gave only an email. */
+  phone?: string | null;
 }): Promise<DiscountOutcome> {
   const code = normaliseCode(input.code);
 
@@ -67,15 +69,22 @@ export async function resolveDiscountForCart(input: {
 /**
  * How many times this person has already used a code.
  *
- * Matched on account when signed in and on email otherwise: a guest has no
- * account to count against, and their email is the only thing that carries
- * between orders.
+ * Matched on account when signed in, and on whichever contacts they gave
+ * otherwise: a guest has no account to count against, so the contact is the
+ * only thing that carries between orders.
+ *
+ * Either contact matching is enough, which is deliberately the generous
+ * reading in the buyer's favour — two guest checkouts sharing a phone are the
+ * same person even when the addresses differ.
  */
 export async function countRedemptions(
   discountId: string,
-  who: { userId: string | null; email: string | null },
+  who: { userId: string | null; email: string | null; phone?: string | null },
 ): Promise<number> {
-  if (!who.userId && !who.email) return 0;
+  const email = who.email?.trim().toLowerCase() || null;
+  const phone = who.phone?.trim() || null;
+
+  if (!who.userId && !email && !phone) return 0;
 
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -85,7 +94,12 @@ export async function countRedemptions(
         eq(discountRedemptions.discountId, discountId),
         who.userId
           ? eq(discountRedemptions.userId, who.userId)
-          : sql`lower(${discountRedemptions.email}) = ${who.email?.toLowerCase()}`,
+          : or(
+              email
+                ? sql`lower(${discountRedemptions.email}) = ${email}`
+                : undefined,
+              phone ? eq(discountRedemptions.contactPhone, phone) : undefined,
+            ),
       ),
     );
 

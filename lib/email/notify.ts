@@ -40,6 +40,17 @@ export async function sendOrderConfirmation(orderId: string): Promise<void> {
 
   if (!order) return;
 
+  /**
+   * A buyer who checked out with a number alone has nothing to email.
+   *
+   * Returning quietly rather than inventing an address: this function is
+   * called from the payment path, and an order that settled must not fail
+   * because there was no receipt to send. The confirmation is on screen and on
+   * the order page either way, and an SMS receipt is the obvious follow-up
+   * once lib/sms has a real gateway behind it.
+   */
+  if (!order.email) return;
+
   const lines = await db
     .select({
       title: orderItems.productTitle,

@@ -42,8 +42,15 @@ export type CreateIntentInput = {
   orderId: string;
   amountCents: number;
   currency: string;
-  /** For receipts and fraud checks. Never card data. */
-  buyerEmail: string;
+  /**
+   * For receipts and fraud checks. Never card data.
+   *
+   * Null for a buyer who checked out with a phone number alone. A provider
+   * that needs an address for a receipt has to say so rather than be handed an
+   * invented one — a receipt mailed to a made-up address is a receipt nobody
+   * gets, and on a shared domain it is one a stranger might.
+   */
+  buyerEmail: string | null;
   /** Provider-side idempotency, so a retried request cannot charge twice. */
   idempotencyKey: string;
   metadata?: Record<string, string>;

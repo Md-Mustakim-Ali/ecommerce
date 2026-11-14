@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -79,8 +80,28 @@ export const orders = pgTable(
     /** Human-readable, e.g. ORD-2026-000123. Shown to buyers and support. */
     orderNumber: text("order_number").notNull(),
 
-    /** Guest checkout is allowed, so contact details live on the order. */
-    email: text("email").notNull(),
+    /**
+     * Guest checkout is allowed, so contact details live on the order.
+     *
+     * Either of these may be null, never both — see the check constraint
+     * below. Email stopped being mandatory when phone became an account
+     * identifier: requiring an address from a buyer who does not use email
+     * only ever produced a fake one, which is worse than none. A fake address
+     * cannot receive a receipt *and* pollutes the claim lookup.
+     */
+    email: text("email"),
+
+    /**
+     * The buyer's own number, canonical `01XXXXXXXXX`. NOT the courier's.
+     *
+     * Deliberately not called `phone`, because `shipping_address` already has
+     * one and confusing the two is the expensive mistake here. That one is
+     * where the parcel gets delivered — routinely a different person, as the
+     * checkout form has said for a while. If an order were claimed by its
+     * delivery number, anyone who has ever received a gift could sign up with
+     * their own number and inherit the sender's order history.
+     */
+    contactPhone: text("contact_phone"),
 
     status: orderStatus("status").notNull().default("pending"),
 
@@ -108,6 +129,33 @@ export const orders = pgTable(
     uniqueIndex("orders_number_key").on(t.orderNumber),
     index("orders_buyer_idx").on(t.buyerId),
     index("orders_status_idx").on(t.status),
+
+    /**
+     * An order with no way to reach the buyer is not an order anyone can
+     * fulfil, so the database says so rather than four call sites remembering
+     * to. Declarative because it has to hold for the load-test endpoint and
+     * the seed script too, neither of which goes through checkout validation.
+     */
+    check(
+      "orders_contact_present",
+      sql`${t.email} is not null or ${t.contactPhone} is not null`,
+    ),
+
+    /**
+     * Partial, and only over unclaimed rows. These two indexes exist for one
+     * query — "which guest orders belong to this contact I just verified" —
+     * and that query never looks at an order that already has an owner.
+     * Excluding claimed rows keeps both indexes proportional to the backlog
+     * rather than to the order table, which only grows.
+     */
+    index("orders_unclaimed_email_idx")
+      .on(t.email)
+      .where(sql`${t.buyerId} is null and ${t.email} is not null`),
+    index("orders_unclaimed_phone_idx")
+      .on(t.contactPhone)
+      .where(sql`${t.buyerId} is null and ${t.contactPhone} is not null`),
+
+    // Support looks orders up by email regardless of who owns them.
     index("orders_email_idx").on(t.email),
   ],
 );

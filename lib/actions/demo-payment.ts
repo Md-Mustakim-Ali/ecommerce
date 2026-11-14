@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
 import { sendOrderConfirmation } from "@/lib/email/notify";
 import { recordOrderPaid } from "@/lib/money/ledger";
+import { contactsFromSession, orderBelongsTo } from "@/lib/orders/ownership";
 
 /**
  * Marks an order paid without any money moving.
@@ -45,6 +46,7 @@ export async function confirmDemoPaymentAction(input: {
       id: orders.id,
       buyerId: orders.buyerId,
       email: orders.email,
+      contactPhone: orders.contactPhone,
       status: orders.status,
       orderNumber: orders.orderNumber,
       paymentIntentId: orders.paymentIntentId,
@@ -57,11 +59,7 @@ export async function confirmDemoPaymentAction(input: {
 
   // Even in a demo, only the person who placed it. Otherwise any signed-in
   // account could walk order ids and settle other people's carts.
-  const ownedByUser = session !== null && order.buyerId === session.user.id;
-  const ownedByEmail =
-    session !== null &&
-    order.email.toLowerCase() === session.user.email.toLowerCase();
-  if (!ownedByUser && !ownedByEmail) {
+  if (!session || !orderBelongsTo(order, contactsFromSession(session))) {
     return { ok: false, message: "That is not your order." };
   }
 

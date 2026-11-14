@@ -134,6 +134,13 @@
       "when": 1788943043239,
       "tag": "0018_silly_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788966765228,
+      "tag": "0019_material_legion",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
+import { contactsFromSession, orderBelongsTo } from "@/lib/orders/ownership";
 import {
   type PaymentSnapshot,
   syncOrderPayment,
@@ -44,6 +45,7 @@ export async function checkPaymentStatusAction(input: {
       id: orders.id,
       buyerId: orders.buyerId,
       email: orders.email,
+      contactPhone: orders.contactPhone,
       status: orders.status,
     })
     .from(orders)
@@ -55,10 +57,7 @@ export async function checkPaymentStatusAction(input: {
   // the whole value of walking them.
   if (!order) return { ok: false, message: "Unknown order." };
 
-  const ownedByUser = order.buyerId === session.user.id;
-  const ownedByEmail =
-    order.email.toLowerCase() === session.user.email.toLowerCase();
-  if (!ownedByUser && !ownedByEmail) {
+  if (!orderBelongsTo(order, contactsFromSession(session))) {
     return { ok: false, message: "Unknown order." };
   }
 

@@ -8,6 +8,7 @@ import {
   stores,
   subOrders,
 } from "@/lib/db/schema";
+import { orderBelongsTo } from "./ownership";
 
 /**
  * Order reads.
@@ -22,6 +23,8 @@ export async function getOrderForBuyer(input: {
   userId: string | null;
   /** Lets a guest open their own confirmation from the emailed link. */
   email?: string;
+  /** The same, for a buyer who checked out with a number and no address. */
+  phone?: string;
 }) {
   const [order] = await db
     .select()
@@ -31,13 +34,8 @@ export async function getOrderForBuyer(input: {
 
   if (!order) return null;
 
-  // A uuid is not authorisation. The order has to belong to this person, by
-  // account or by the email it was placed with.
-  const ownedByUser = input.userId !== null && order.buyerId === input.userId;
-  const ownedByEmail =
-    input.email !== undefined &&
-    order.email.toLowerCase() === input.email.toLowerCase();
-  if (!ownedByUser && !ownedByEmail) return null;
+  // A uuid is not authorisation. The order has to belong to this person.
+  if (!orderBelongsTo(order, input)) return null;
 
   const subs = await db
     .select({
@@ -169,6 +167,7 @@ export async function listOrdersForStore(
       orderNumber: orders.orderNumber,
       orderStatus: orders.status,
       buyerEmail: orders.email,
+      buyerPhone: orders.contactPhone,
       shippingAddress: orders.shippingAddress,
       placedAt: orders.placedAt,
     })

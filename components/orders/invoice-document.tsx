@@ -162,8 +162,10 @@ export function InvoiceDocument({
           <Address
             address={invoice.billingAddress ?? invoice.shippingAddress}
           />
+          {/* Whichever contact the order carries. Never both blank — the
+              orders table has a check constraint saying so. */}
           <div className="mt-1 text-[10pt] text-black/70">
-            {invoice.buyerEmail}
+            {invoice.buyerEmail ?? invoice.buyerPhone}
           </div>
         </div>
 

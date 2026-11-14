@@ -123,6 +123,7 @@ export function CheckoutForm({
   cart,
   shippingCents,
   defaultEmail,
+  defaultContactPhone,
   savedAddresses,
   signedIn,
   jommaAvailable,
@@ -130,6 +131,8 @@ export function CheckoutForm({
   cart: CartSummary;
   shippingCents: number;
   defaultEmail: string;
+  /** The signed-in buyer's own number, if their account carries one. */
+  defaultContactPhone: string;
   /** Whether bKash/Nagad can be offered. Decided on the server. */
   jommaAvailable: boolean;
   /** The buyer's address book, default first. Empty for guests. */
@@ -166,6 +169,35 @@ export function CheckoutForm({
   const [draft, setDraft] = useState<AddressFields>(EMPTY_ADDRESS);
   const [editing, setEditing] = useState(false);
   const [saveToAccount, setSaveToAccount] = useState(false);
+
+  /**
+   * How to reach the buyer, as opposed to where the parcel goes.
+   *
+   * At least one of these, never neither — the same rule the server and the
+   * orders table both enforce. It is also what an account claims this order
+   * by later, which is why the number here is asked for separately from the
+   * delivery number rather than assumed to be it.
+   */
+  const [contactEmail, setContactEmail] = useState(defaultEmail);
+  const [contactPhone, setContactPhone] = useState(defaultContactPhone);
+  /**
+   * Defaulted on, because most people buy for themselves and the alternative
+   * is making everyone type one number twice.
+   *
+   * Turning it off is the case that matters: a parcel sent to someone else
+   * carries their number for the courier, and leaving that as the contact
+   * would let them claim this order once they verified it. Cheap to fix, and
+   * only fixable if the option is visible — hence a checkbox rather than a
+   * silent copy.
+   */
+  const [phoneSameAsDelivery, setPhoneSameAsDelivery] = useState(
+    defaultContactPhone.length === 0,
+  );
+
+  // What actually gets submitted as the contact number.
+  const effectiveContactPhone = phoneSameAsDelivery
+    ? fields.phone
+    : contactPhone;
 
   const selected =
     savedAddresses.find((address) => address.id === selectedId) ?? null;
@@ -212,7 +244,6 @@ export function CheckoutForm({
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    const data = new FormData(event.currentTarget);
 
     // Read from state rather than the form, because a selected saved address
     // has its inputs collapsed and an unmounted input contributes nothing to
@@ -228,7 +259,8 @@ export function CheckoutForm({
         // Re-validated on the server against the same enum. The browser names
         // a method; it does not get to name anything about the money.
         paymentMethod: method,
-        email: String(data.get("email") ?? ""),
+        email: contactEmail.trim(),
+        contactPhone: effectiveContactPhone.trim(),
         shippingAddress,
       });
 
@@ -272,6 +304,7 @@ export function CheckoutForm({
       <div className="flex flex-col gap-6">
         <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface-1 p-5">
           <h2 className="font-medium">Contact</h2>
+
           <div className="grid gap-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -279,13 +312,54 @@ export function CheckoutForm({
               name="email"
               type="email"
               autoComplete="email"
-              defaultValue={defaultEmail}
-              required
+              value={contactEmail}
+              onChange={(event) => setContactEmail(event.target.value)}
             />
-            <p className="text-tertiary-text text-xs">
-              We send the receipt and shipping updates here.
-            </p>
           </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="contactPhone">Your phone</Label>
+            <Input
+              id="contactPhone"
+              name="contactPhone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="01712345678"
+              value={effectiveContactPhone}
+              onChange={(event) => setContactPhone(event.target.value)}
+              disabled={phoneSameAsDelivery}
+            />
+
+            {/*
+              The cross-option. Most orders go to the person placing them, so
+              this starts on and the number is typed once — but a parcel sent
+              to somebody else carries *their* number for the courier, and
+              leaving that as the contact would hand them this order the day
+              they made an account with it.
+            */}
+            <label className="flex items-center gap-2 text-secondary-text text-sm">
+              <input
+                type="checkbox"
+                checked={phoneSameAsDelivery}
+                onChange={(event) => {
+                  setPhoneSameAsDelivery(event.target.checked);
+                  // Carried over rather than blanked, so unticking it to make
+                  // a small correction does not mean retyping the number.
+                  if (!event.target.checked && contactPhone.length === 0) {
+                    setContactPhone(fields.phone);
+                  }
+                }}
+                className="size-4 accent-accent"
+              />
+              Same as the delivery number
+            </label>
+          </div>
+
+          <p className="text-tertiary-text text-xs">
+            Give at least one. Your receipt and order updates go here, and it is
+            how this order finds your account if you make one later.
+          </p>
         </section>
 
         <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface-1 p-5">

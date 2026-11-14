@@ -122,9 +122,17 @@ export const discountRedemptions = pgTable(
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
 
-    /** Null for a guest checkout, which the email then identifies. */
+    /**
+     * Null for a guest checkout, which a contact then identifies.
+     *
+     * Both contacts, mirroring `orders`, because a per-customer limit that
+     * only knows about email stops counting the moment a buyer checks out with
+     * a number alone — and a limit that silently stops applying is worse than
+     * no limit, since the discount report still claims it held.
+     */
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
-    email: text("email").notNull(),
+    email: text("email"),
+    contactPhone: text("contact_phone"),
 
     /** What it actually took off, after caps and allocation. */
     amountCents: integer("amount_cents").notNull(),
@@ -141,6 +149,7 @@ export const discountRedemptions = pgTable(
     ),
     index("discount_redemptions_discount_idx").on(t.discountId),
     index("discount_redemptions_email_idx").on(t.email),
+    index("discount_redemptions_phone_idx").on(t.contactPhone),
   ],
 );
 
