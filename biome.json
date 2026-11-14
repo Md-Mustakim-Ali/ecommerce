@@ -14,7 +14,8 @@
       "!dist",
       "!build",
       "!components/analytics/ui",
-      "!.claude"
+      "!.claude",
+      "!lib/db/migrations/meta"
     ]
   },
   "formatter": {
