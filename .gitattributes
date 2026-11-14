@@ -1,2 +1,27 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normalise every text file to LF in the repository AND on disk.
+#
+# `text=auto` alone only normalises what is stored in git; on checkout it still
+# converts to the platform's native ending, so a Windows clone with
+# core.autocrlf=true writes CRLF to disk. Biome reads the bytes on disk, so
+# `pnpm lint` reported format failures on whatever files git had most recently
+# checked out — 10 in the main checkout, a different 20 in a fresh worktree, and
+# the set moved with every branch switch. None of them were real formatting
+# problems; converting line endings alone made them clean.
+#
+# `eol=lf` overrides core.autocrlf, so the working tree matches the blobs. It is
+# a repository-level fix rather than a per-machine git config, so it holds for
+# every clone. Nothing here needs CRLF: there are no .bat/.cmd/.ps1 files.
+* text=auto eol=lf
+
+# Binaries are excluded explicitly. `text=auto` would almost certainly detect
+# these correctly on its own, but a false positive corrupts the file.
+*.woff  binary
+*.woff2 binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.avif  binary
+*.ico   binary
+*.pdf   binary

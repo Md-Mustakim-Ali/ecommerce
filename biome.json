@@ -13,7 +13,8 @@
       "!.next",
       "!dist",
       "!build",
-      "!components/analytics/ui"
+      "!components/analytics/ui",
+      "!lib/db/migrations/meta"
     ]
   },
   "formatter": {
