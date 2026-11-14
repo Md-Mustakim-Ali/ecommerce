@@ -127,6 +127,13 @@
       "when": 1788892539285,
       "tag": "0017_kind_squirrel_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788943043239,
+      "tag": "0018_silly_loki",
+      "breakpoints": true
     }
   ]
 }

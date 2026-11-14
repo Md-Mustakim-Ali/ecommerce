@@ -147,8 +147,13 @@ export async function deleteProductImageAction(input: {
 
   // The row goes first. An orphaned file wastes disk; a row pointing at a
   // deleted file is a broken image on the storefront, which is worse.
+  //
+  // A queued or failed upload has no URL because it never reached storage,
+  // so there is nothing to remove.
   try {
-    await storageProvider().remove(image.url.replace(/^\/uploads\//, ""));
+    if (image.url) {
+      await storageProvider().remove(image.url.replace(/^\/uploads\//, ""));
+    }
   } catch {
     // Seeded images live on a remote host and have no local file. Failing to
     // delete something that was never ours must not fail the request.

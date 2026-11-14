@@ -13,6 +13,7 @@ import {
   subOrders,
 } from "@/lib/db/schema";
 import type { AddressSnapshot } from "@/lib/db/schema/orders";
+import { readyImage } from "@/lib/media/filters";
 import {
   assertOrderBalances,
   buildOrderTotals,
@@ -195,6 +196,9 @@ export async function placeOrder(
         url: productImages.url,
       })
       .from(productImages)
+      // The snapshot is permanent — an order keeps whatever URL it was given
+      // forever — so an unfinished upload landing here is uncorrectable later.
+      .where(readyImage())
       .orderBy(productImages.productId, productImages.position);
     const imageByProduct = new Map(imageRows.map((r) => [r.productId, r.url]));
     const rowByVariant = new Map(rows.map((r) => [r.variantId, r]));

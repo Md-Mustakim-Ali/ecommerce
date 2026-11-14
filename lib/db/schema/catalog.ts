@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { primaryId, timestamps } from "./_shared";
 import { user } from "./auth";
+import { storeGoogleAccounts } from "./media";
 import { stores } from "./stores";
 
 const tsvector = customType<{ data: string; driverData: string }>({
@@ -170,6 +171,23 @@ export const productStatus = pgEnum("product_status", [
   "archived",
 ]);
 
+/**
+ * What a product does once its media finishes uploading.
+ *
+ * `when_media_ready` exists because seller-supplied media does not become
+ * usable at the moment it is accepted. A Drive file has to finish syncing and
+ * a YouTube video has to finish transcoding, and publishing before either is
+ * done ships a listing with a broken image or a "processing" placeholder where
+ * a video should be. The alternative is asking the seller to come back and
+ * press publish at a moment only Google knows.
+ */
+export const productPublishMode = pgEnum("product_publish_mode", [
+  /** Stays draft until the seller publishes it, media or no media. */
+  "manual",
+  /** Publishes itself the moment the last asset reports ready. */
+  "when_media_ready",
+]);
+
 export const products = pgTable(
   "products",
   {
@@ -190,7 +208,28 @@ export const products = pgTable(
 
     title: text("title").notNull(),
     slug: text("slug").notNull(),
+
+    /**
+     * The flattened plain text of descriptionDoc, and the column search reads.
+     *
+     * Kept in sync on every write rather than derived at query time, because
+     * searchVector below is a GENERATED column and a generated column cannot
+     * reach into jsonb. Dropping this in favour of the document alone would
+     * silently remove every rich description from search results — the query
+     * would still run, just never match.
+     *
+     * Also the fallback for products written before rich text existed, which
+     * have a description and no document.
+     */
     description: text("description"),
+
+    /**
+     * The rich description. See lib/rich-text/schema.ts.
+     *
+     * Null means this product predates rich text (or the seller cleared it),
+     * in which case `description` is rendered as plain paragraphs.
+     */
+    descriptionDoc: jsonb("description_doc").$type<Record<string, unknown>>(),
 
     status: productStatus("status").notNull().default("draft"),
 
@@ -224,6 +263,8 @@ export const products = pgTable(
     stockDisplay: stockDisplay("stock_display").notNull().default("when_low"),
     lowStockThreshold: integer("low_stock_threshold").notNull().default(5),
 
+    publishMode: productPublishMode("publish_mode").notNull().default("manual"),
+
     publishedAt: timestamp("published_at", { withTimezone: true }),
 
     ...timestamps,
@@ -237,6 +278,56 @@ export const products = pgTable(
   ],
 );
 
+/** An image the platform hosts, a Drive file, or a video on YouTube. */
+export const mediaKind = pgEnum("media_kind", ["image", "video"]);
+
+export const mediaProvider = pgEnum("media_provider", [
+  /** Uploaded through lib/storage — R2 in production, local disk in dev. */
+  "managed",
+  /** Lives in a seller's Google Drive. */
+  "drive",
+  /** Lives on a seller's YouTube channel. */
+  "youtube",
+]);
+
+/**
+ * Where an asset is between "seller picked a file" and "a buyer can see it".
+ *
+ * Platform uploads go straight to `ready` — lib/storage returns a URL that
+ * works. Everything else has a gap: a Drive file has to finish syncing, and a
+ * YouTube video has to finish transcoding, which can take half an hour for a
+ * large one. `unavailable` is the state nobody expects and everybody needs —
+ * an asset that was ready and has since been deleted or made private at the
+ * source, six weeks after the product went live.
+ */
+export const mediaState = pgEnum("media_state", [
+  /** Accepted, waiting for capacity. See lib/media/picker.ts. */
+  "queued",
+  "uploading",
+  /** Google has the bytes and is still processing them. */
+  "processing",
+  "ready",
+  /** Gave up. failureReason says why. */
+  "failed",
+  /** Was ready, has since disappeared at the source. */
+  "unavailable",
+]);
+
+/**
+ * Where an asset appears.
+ *
+ * Both live in this table on purpose — a description embed goes through the
+ * identical upload path, readiness gate and failover as a gallery photo, and
+ * splitting them into two tables would mean two of everything and an eventual
+ * drift between them. The column exists so that a photo embedded halfway down
+ * a description never wins the position-0 slot and turns up as the product's
+ * cart thumbnail.
+ */
+export const mediaPlacement = pgEnum("media_placement", [
+  "gallery",
+  "description",
+]);
+
 export const productImages = pgTable(
   "product_images",
   {
@@ -244,17 +335,63 @@ export const productImages = pgTable(
     productId: uuid("product_id")
       .notNull()
       .references(() => products.id, { onDelete: "cascade" }),
-    url: text("url").notNull(),
+
+    kind: mediaKind("kind").notNull().default("image"),
+    provider: mediaProvider("provider").notNull().default("managed"),
+    placement: mediaPlacement("placement").notNull().default("gallery"),
+
+    /**
+     * Nullable now, because a queued Drive upload or a YouTube video that is
+     * still transcoding has no URL yet. Every read path that renders media has
+     * to filter on state rather than assume this is populated.
+     */
+    url: text("url"),
+    /** Drive fileId or YouTube videoId. Null for managed uploads. */
+    providerRef: text("provider_ref"),
+
+    /**
+     * Which connected account holds it.
+     *
+     * Needed to delete the asset later: only the account that uploaded a file
+     * can remove it. `set null` rather than cascade — disconnecting an account
+     * must not silently delete the product's media rows, because then nobody
+     * can see what broke. The row survives, goes `unavailable`, and says so.
+     */
+    googleAccountId: uuid("google_account_id").references(
+      () => storeGoogleAccounts.id,
+      { onDelete: "set null" },
+    ),
+
+    state: mediaState("state").notNull().default("ready"),
+
+    /**
+     * A resumable upload session, kept so a dropped connection resumes rather
+     * than restarts. On a 1,600-unit budget that is the difference between
+     * losing a retry and losing a quarter of the day's uploads.
+     */
+    uploadSessionUri: text("upload_session_uri"),
+
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    checkAttempts: integer("check_attempts").notNull().default(0),
+    failureReason: text("failure_reason"),
+
     alt: text("alt"),
     position: integer("position").notNull().default(0),
     /** Base64 LQIP. Without it every image load shifts the layout. */
     blurDataUrl: text("blur_data_url"),
     width: integer("width"),
     height: integer("height"),
+    /** Video only. Drives the duration badge on the gallery thumbnail. */
+    durationSeconds: integer("duration_seconds"),
+
     ...timestamps,
   },
   (t) => [
     index("product_images_product_position_idx").on(t.productId, t.position),
+    // The publish gate asks "does this product have anything not ready", and
+    // the sweeper asks "what is outstanding across every store". Both are this
+    // index.
+    index("product_images_state_idx").on(t.state, t.lastCheckedAt),
   ],
 );
 

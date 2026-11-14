@@ -15,6 +15,9 @@ import {
   listReviewsForProduct,
   ratingBreakdown,
 } from "@/lib/reviews/queries";
+import type { RenderableMedia } from "@/lib/rich-text/render";
+import { RichText } from "@/lib/rich-text/render";
+import { parseDescriptionDoc } from "@/lib/rich-text/schema";
 
 export async function generateMetadata({
   params,
@@ -32,6 +35,21 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product) notFound();
+
+  // Parsed at render rather than trusted. The column holds whatever was valid
+  // when it was written, and a schema that has tightened since would otherwise
+  // reach the renderer as a shape it does not handle.
+  const parsedDescription = product.descriptionDoc
+    ? parseDescriptionDoc(product.descriptionDoc)
+    : null;
+  const richDescription =
+    parsedDescription?.ok && parsedDescription.doc.content.length > 0
+      ? parsedDescription.doc
+      : null;
+
+  const descriptionMediaById = new Map<string, RenderableMedia>(
+    product.descriptionMedia.map((asset) => [asset.id, asset]),
+  );
 
   const session = await getSession();
 
@@ -182,14 +200,25 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
         <div className="flex flex-col gap-6">
-          {product.description ? (
+          {richDescription || product.description ? (
             <>
               <Separator />
               <div className="flex flex-col gap-2">
                 <h2 className="font-medium text-sm">Details</h2>
-                <p className="whitespace-pre-line text-secondary-text text-sm leading-relaxed">
-                  {product.description}
-                </p>
+                {richDescription ? (
+                  // The rich document wins when there is one. `description` is
+                  // kept in sync as flattened plain text for search, so falling
+                  // back to it would render the same words without structure.
+                  <RichText
+                    doc={richDescription}
+                    media={descriptionMediaById}
+                    className="text-secondary-text text-sm"
+                  />
+                ) : (
+                  <p className="whitespace-pre-line text-secondary-text text-sm leading-relaxed">
+                    {product.description}
+                  </p>
+                )}
               </div>
             </>
           ) : null}

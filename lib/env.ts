@@ -66,6 +66,32 @@ const envSchema = z.object({
    * silently missing rather than as an error.
    */
   R2_PUBLIC_URL: z.url().optional(),
+
+  // -- Google media connections ---------------------------------------------
+  //
+  // Encrypts the OAuth client secrets and refresh tokens in store_google_*.
+  // Base64 of 32 random bytes:
+  //   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  //
+  // Optional so the app boots without it — a store that has not connected
+  // Google never touches this. lib/media/crypto.ts throws with instructions at
+  // the point a connection is actually saved or read.
+  //
+  // Rotating it strands every existing connection: the ciphertext is
+  // undecryptable and every seller has to reconnect. The stored values carry a
+  // version prefix so a future rotation can decrypt old and write new, but
+  // that path does not exist yet.
+  GOOGLE_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
+
+  /**
+   * Bearer token for POST /api/media/sweep.
+   *
+   * Absent closes the endpoint rather than opening it — a missing variable
+   * must never be what makes a route public. That route makes Google API
+   * calls for every store, so leaving it open is a free way for anyone to
+   * burn a seller's whole daily quota.
+   */
+  MEDIA_SWEEP_SECRET: z.string().min(16).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -54,6 +54,9 @@ let moved = 0;
 let missing = 0;
 
 for (const row of rows) {
+  // The LIKE '/uploads/%' filter already excludes nulls; this is here so the
+  // loop stays correct if that predicate is ever loosened.
+  if (!row.url) continue;
   // "/uploads/products/foo-1a2b.webp" -> "products/foo-1a2b.webp"
   const key = row.url.replace(/^\/uploads\//, "");
   const source = path.resolve(root, key);

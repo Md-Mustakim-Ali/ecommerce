@@ -4,6 +4,8 @@ import { Loader2, Plus, Trash2, TriangleAlert, Wand2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { TermCombobox } from "@/components/dashboard/term-combobox";
+import type { EditorMedia } from "@/components/editor/media-context";
+import { RichTextEditor } from "@/components/editor/rich-text-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,12 +21,18 @@ import {
   updateProductClassificationAction,
   updateProductDetailsAction,
 } from "@/lib/actions/product-editor";
+import {
+  attachVideoLinkAction,
+  setPublishModeAction,
+  uploadProductImageToDriveAction,
+} from "@/lib/actions/product-media";
 import type {
   EditorAttribute,
   EditorVariant,
 } from "@/lib/catalog/product-editor";
 import type { Term } from "@/lib/catalog/terms";
-import { type EditorImage, ImageManager } from "./image-manager";
+import type { DescriptionDoc } from "@/lib/rich-text/schema";
+import { type EditorMediaItem, MediaManager } from "./media-manager";
 
 type AvailableAttribute = {
   id: string;
@@ -69,6 +77,7 @@ const money = (cents: number) => (cents / 100).toFixed(2);
 export function ProductEditor({
   storeId,
   product,
+  media,
   categories,
   available,
   permissions,
@@ -78,12 +87,14 @@ export function ProductEditor({
     id: string;
     title: string;
     description: string | null;
+    descriptionDoc: DescriptionDoc | null;
     status: "draft" | "active" | "archived";
+    publishMode: "manual" | "when_media_ready";
     stockDisplay: "never" | "always" | "when_low";
     lowStockThreshold: number;
     attributes: EditorAttribute[];
     variants: EditorVariant[];
-    images: EditorImage[];
+    media: EditorMediaItem[];
     categoryId: string;
     brandId: string | null;
     brandName: string | null;
@@ -92,6 +103,8 @@ export function ProductEditor({
     brandMergedIntoId: string | null;
     tags: Term[];
   };
+  /** Every asset on the product, in any state. Keyed for the editor's embeds. */
+  media: ReadonlyMap<string, EditorMedia>;
   categories: { id: string; name: string }[];
   available: AvailableAttribute[];
   permissions: {
@@ -106,7 +119,7 @@ export function ProductEditor({
 }) {
   return (
     <div className="flex flex-col gap-6">
-      <DetailsSection storeId={storeId} product={product} />
+      <DetailsSection storeId={storeId} product={product} media={media} />
 
       <ClassificationSection
         storeId={storeId}
@@ -116,10 +129,10 @@ export function ProductEditor({
         canProposeTag={permissions.proposeTag}
       />
 
-      <ImageManager
+      <MediaManager
         storeId={storeId}
         productId={product.id}
-        images={product.images}
+        media={product.media}
         attributes={product.attributes}
         canEdit
       />
@@ -151,6 +164,12 @@ export function ProductEditor({
         productId={product.id}
         status={product.status}
         variantCount={product.variants.length}
+        publishMode={product.publishMode}
+        settlingCount={
+          product.media.filter((asset) =>
+            ["queued", "uploading", "processing"].includes(asset.state),
+          ).length
+        }
         permissions={permissions}
       />
 
@@ -354,17 +373,38 @@ function ClassificationSection({
 function DetailsSection({
   storeId,
   product,
+  media,
 }: {
   storeId: string;
   product: {
     id: string;
     title: string;
     description: string | null;
+    descriptionDoc: DescriptionDoc | null;
     stockDisplay: "never" | "always" | "when_low";
     lowStockThreshold: number;
   };
+  media: ReadonlyMap<string, EditorMedia>;
 }) {
   const [display, setDisplay] = useState(product.stockDisplay);
+  // Products written before rich text have plain text and no document. The
+  // first paragraph seeds the editor so their copy is not silently dropped the
+  // moment they open the form.
+  const [doc, setDoc] = useState<DescriptionDoc>(
+    product.descriptionDoc ??
+      (product.description
+        ? {
+            type: "doc",
+            content: product.description
+              .split(/\n{2,}/)
+              .filter(Boolean)
+              .map((paragraph) => ({
+                type: "paragraph" as const,
+                content: [{ type: "text" as const, text: paragraph }],
+              })),
+          }
+        : { type: "doc", content: [] }),
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -382,7 +422,7 @@ function DetailsSection({
             storeId,
             productId: product.id,
             title: String(data.get("title") ?? ""),
-            description: String(data.get("description") ?? ""),
+            descriptionDoc: doc,
             stockDisplay: display,
             lowStockThreshold: Number(data.get("lowStockThreshold") ?? 5),
           });
@@ -408,14 +448,30 @@ function DetailsSection({
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="description">Description</Label>
-        <textarea
-          id="description"
-          name="description"
-          rows={5}
-          maxLength={8000}
-          defaultValue={product.description ?? ""}
-          className="w-full rounded-lg border border-border-strong bg-surface-sunken px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        {/* Not a <label>: the editor is a contenteditable region rather than a
+            form control, so htmlFor has nothing valid to point at. */}
+        <span className="font-medium text-sm">Description</span>
+        <RichTextEditor
+          value={doc}
+          onChange={setDoc}
+          media={media}
+          disabled={pending}
+          onUploadImage={async (file) => {
+            const form = new FormData();
+            form.set("storeId", storeId);
+            form.set("productId", product.id);
+            form.set("placement", "description");
+            form.set("file", file);
+            return uploadProductImageToDriveAction(form);
+          }}
+          onAttachVideo={async (url) =>
+            attachVideoLinkAction({
+              storeId,
+              productId: product.id,
+              url,
+              placement: "description",
+            })
+          }
         />
       </div>
 
@@ -1152,17 +1208,43 @@ function StatusSection({
   productId,
   status,
   variantCount,
+  publishMode,
+  settlingCount,
   permissions,
 }: {
   storeId: string;
   productId: string;
   status: "draft" | "active" | "archived";
   variantCount: number;
+  publishMode: "manual" | "when_media_ready";
+  /** Assets still uploading or transcoding. Non-zero blocks publishing. */
+  settlingCount: number;
   permissions: { publish: boolean; archive: boolean };
 }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [mode, setMode] = useState(publishMode);
   const [pending, startTransition] = useTransition();
+
+  function changeMode(next: "manual" | "when_media_ready") {
+    const previous = mode;
+    setMode(next);
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const result = await setPublishModeAction({
+        storeId,
+        productId,
+        publishMode: next,
+      });
+      if (!result.ok) {
+        setMode(previous);
+        setError(result.message);
+        return;
+      }
+      setMessage(result.message);
+    });
+  }
 
   function move(next: "draft" | "active" | "archived") {
     setError(null);
@@ -1192,6 +1274,29 @@ function StatusSection({
               ? "Hidden. Past orders keep working."
               : `Draft, ${variantCount} ${variantCount === 1 ? "variant" : "variants"}.`}
         </p>
+
+        {status === "draft" && permissions.publish ? (
+          <label className="mt-2 flex items-start gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={mode === "when_media_ready"}
+              disabled={pending}
+              onChange={(event) =>
+                changeMode(event.target.checked ? "when_media_ready" : "manual")
+              }
+              className="mt-0.5"
+            />
+            <span className="text-secondary-text">
+              Publish automatically once every photo and video is ready.
+              {settlingCount > 0 ? (
+                <span className="block text-tertiary-text">
+                  {settlingCount} file{settlingCount === 1 ? "" : "s"} still
+                  processing.
+                </span>
+              ) : null}
+            </span>
+          </label>
+        ) : null}
         {error ? (
           <p role="alert" className="text-critical text-xs">
             {error}

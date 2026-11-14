@@ -49,6 +49,19 @@ const nextConfig: NextConfig = {
       // anyone proxy images through the site.
       { protocol: "https", hostname: "picsum.photos" },
       { protocol: "https", hostname: "fastly.picsum.photos" },
+      // YouTube poster frames for video embeds. Narrow on purpose: this host
+      // only ever serves thumbnails keyed by video id, so allowing it does not
+      // turn the site into an open image proxy the way a broad Google host
+      // would.
+      //
+      // No Google Drive host appears here, and that is deliberate. Drive is
+      // not a CDN: the uc?export=view and lh3.googleusercontent.com tricks are
+      // undocumented, rate-limit on anything popular, and Google has broken
+      // them repeatedly. Allowing lh3 would also make this site an open proxy
+      // for any Google-hosted image. Drive-backed media is served from our own
+      // origin instead — see app/api/media/[mediaId] — which keeps the bytes
+      // in the seller's Drive, where the whole point was to put them.
+      { protocol: "https", hostname: "i.ytimg.com" },
       ...(host ? [{ protocol: "https" as const, hostname: host }] : []),
     ],
   },

@@ -14,6 +14,7 @@ import {
   tags,
   variantAttributeValues,
 } from "@/lib/db/schema";
+import { readyImage } from "@/lib/media/filters";
 
 /**
  * Reads for the seller's product editor.
@@ -60,6 +61,7 @@ export async function getProductForEditing(productId: string, storeId: string) {
       title: products.title,
       slug: products.slug,
       description: products.description,
+      descriptionDoc: products.descriptionDoc,
       categoryId: products.categoryId,
       brandId: products.brandId,
       brandName: brands.name,
@@ -69,6 +71,7 @@ export async function getProductForEditing(productId: string, storeId: string) {
       brandStatus: brands.status,
       brandMergedIntoId: brands.mergedIntoId,
       status: products.status,
+      publishMode: products.publishMode,
       stockDisplay: products.stockDisplay,
       lowStockThreshold: products.lowStockThreshold,
     })
@@ -87,8 +90,8 @@ export async function getProductForEditing(productId: string, storeId: string) {
     variantRows,
     variantValueRows,
     tagRows,
-    imageRows,
     imageTagRows,
+    allMedia,
   ] = await Promise.all([
     db
       .select({
@@ -162,18 +165,6 @@ export async function getProductForEditing(productId: string, storeId: string) {
 
     db
       .select({
-        id: productImages.id,
-        url: productImages.url,
-        alt: productImages.alt,
-        position: productImages.position,
-        blurDataUrl: productImages.blurDataUrl,
-      })
-      .from(productImages)
-      .where(eq(productImages.productId, productId))
-      .orderBy(asc(productImages.position)),
-
-    db
-      .select({
         imageId: productImageAttributeValues.imageId,
         attributeId: productImageAttributeValues.attributeId,
         valueId: productImageAttributeValues.valueId,
@@ -184,6 +175,31 @@ export async function getProductForEditing(productId: string, storeId: string) {
         eq(productImages.id, productImageAttributeValues.imageId),
       )
       .where(eq(productImages.productId, productId)),
+
+    // Every asset, whatever its placement or state.
+    //
+    // Unfiltered on purpose, and the opposite of what the storefront gets:
+    // the seller is the one person who needs to see that a video is still
+    // transcoding or that a file has gone missing, because they are the only
+    // one who can do anything about it.
+    db
+      .select({
+        id: productImages.id,
+        kind: productImages.kind,
+        provider: productImages.provider,
+        placement: productImages.placement,
+        url: productImages.url,
+        providerRef: productImages.providerRef,
+        alt: productImages.alt,
+        position: productImages.position,
+        blurDataUrl: productImages.blurDataUrl,
+        durationSeconds: productImages.durationSeconds,
+        state: productImages.state,
+        failureReason: productImages.failureReason,
+      })
+      .from(productImages)
+      .where(eq(productImages.productId, productId))
+      .orderBy(asc(productImages.position)),
   ]);
 
   // attributeId -> valueId per image, the same shape the storefront gallery
@@ -217,9 +233,12 @@ export async function getProductForEditing(productId: string, storeId: string) {
   return {
     ...product,
     tags: tagRows,
-    images: imageRows.map((image) => ({
-      ...image,
-      tags: tagsByImage.get(image.id) ?? {},
+    // Every asset with its option tags, in position order. One list, because
+    // the seller's grid has to show assets that are not ready — they are
+    // exactly the ones holding publication.
+    media: allMedia.map((asset) => ({
+      ...asset,
+      tags: tagsByImage.get(asset.id) ?? {},
     })),
     attributes: attributeRows.map(
       (row): EditorAttribute => ({
@@ -292,7 +311,7 @@ export async function listProductsForStore(storeId: string, limit = 100) {
         position: productImages.position,
       })
       .from(productImages)
-      .where(inArray(productImages.productId, ids))
+      .where(and(inArray(productImages.productId, ids), readyImage()))
       .orderBy(asc(productImages.position)),
   ]);
 
@@ -300,6 +319,7 @@ export async function listProductsForStore(storeId: string, limit = 100) {
   // First image per product; the query is already ordered by position.
   const cover = new Map<string, string>();
   for (const image of imageRows) {
+    if (!image.url) continue;
     if (!cover.has(image.productId)) cover.set(image.productId, image.url);
   }
 

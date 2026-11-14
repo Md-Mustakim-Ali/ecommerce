@@ -11,6 +11,7 @@ import {
   productVariants,
   stores,
 } from "@/lib/db/schema";
+import { readyImage } from "@/lib/media/filters";
 
 export const CART_COOKIE = "cart_token";
 const CART_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
@@ -106,6 +107,9 @@ async function summarise(cartId: string): Promise<CartSummary> {
           url: productImages.url,
         })
         .from(productImages)
+        // Without readyImage() a video row, or a Drive upload still syncing,
+        // wins the position-0 slot and the cart renders a broken thumbnail.
+        .where(readyImage())
         .orderBy(productImages.productId, productImages.position)
     : [];
   const imageByProduct = new Map(imageRows.map((r) => [r.productId, r.url]));

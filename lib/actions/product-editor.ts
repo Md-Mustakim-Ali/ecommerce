@@ -23,6 +23,12 @@ import {
   tags,
   variantAttributeValues,
 } from "@/lib/db/schema";
+import { canPublish } from "@/lib/media/publish";
+import {
+  flattenToText,
+  isEmptyDoc,
+  parseDescriptionDoc,
+} from "@/lib/rich-text/schema";
 import { storageProvider } from "@/lib/storage";
 
 /**
@@ -59,7 +65,15 @@ const detailsSchema = z.object({
   storeId: z.uuid(),
   productId: z.uuid(),
   title: z.string().trim().min(2, "Give the product a title").max(140),
+  /**
+   * Plain-text fallback, for products written before rich text existed.
+   *
+   * Ignored when descriptionDoc is present — the flattened document wins,
+   * because two sources of truth for one field is how they drift.
+   */
   description: z.string().trim().max(8000).optional(),
+  /** The rich document. Validated against the node vocabulary, not trusted. */
+  descriptionDoc: z.unknown().optional(),
   stockDisplay: z.enum(["never", "always", "when_low"]),
   lowStockThreshold: z.coerce.number().int().min(0).max(10_000),
 });
@@ -77,11 +91,37 @@ export async function updateProductDetailsAction(
   const owned = await ownedProduct(data.productId, data.storeId);
   if (!owned) return { ok: false, message: "Product not found." };
 
+  // The document is the source of truth when there is one, and `description`
+  // becomes its flattened text.
+  //
+  // That mirror is not redundancy — products.search_vector is a GENERATED
+  // column over products.description, and a generated column cannot reach into
+  // jsonb. Skipping this write would leave every rich description invisible to
+  // search, with the query still running and simply never matching.
+  let description = data.description || null;
+  let descriptionDoc: Record<string, unknown> | null = null;
+
+  if (data.descriptionDoc !== undefined && data.descriptionDoc !== null) {
+    const parsedDoc = parseDescriptionDoc(data.descriptionDoc);
+    if (!parsedDoc.ok) {
+      return { ok: false, message: parsedDoc.error };
+    }
+    if (isEmptyDoc(parsedDoc.doc)) {
+      // An emptied editor clears both, rather than leaving a stale paragraph
+      // the seller thought they had deleted.
+      description = null;
+    } else {
+      descriptionDoc = parsedDoc.doc as unknown as Record<string, unknown>;
+      description = flattenToText(parsedDoc.doc).slice(0, 8000) || null;
+    }
+  }
+
   await db
     .update(products)
     .set({
       title: data.title,
-      description: data.description || null,
+      description,
+      descriptionDoc,
       stockDisplay: data.stockDisplay,
       lowStockThreshold: data.lowStockThreshold,
     })
@@ -202,6 +242,9 @@ export async function setProductStatusAction(input: {
   const owned = await ownedProduct(productId, storeId);
   if (!owned) return { ok: false, message: "Product not found." };
 
+  /** Non-blocking note appended to the success message, e.g. a failed upload. */
+  let warning: string | null = null;
+
   if (status === "active") {
     // A live product with no priced variant is a listing that cannot be
     // bought. Better to refuse than to publish something broken.
@@ -215,6 +258,27 @@ export async function setProductStatusAction(input: {
         ok: false,
         message: "Add at least one variant before publishing.",
       };
+    }
+
+    // The media gate. A listing must not go live while a Drive upload is still
+    // syncing or a YouTube video is still transcoding — the buyer would get a
+    // dead thumbnail or a "processing" box where a video should be, and the
+    // seller has no way to know when to come back and fix it.
+    //
+    // Every asset counts, gallery and description embed alike, which is why
+    // they share one table.
+    const assets = await db
+      .select({ id: productImages.id, state: productImages.state })
+      .from(productImages)
+      .where(eq(productImages.productId, productId));
+
+    const gate = canPublish(assets);
+    if (!gate.ok) {
+      return { ok: false, message: gate.reason };
+    }
+
+    if (gate.warning) {
+      warning = gate.warning;
     }
   }
 
@@ -232,7 +296,9 @@ export async function setProductStatusAction(input: {
     ok: true,
     message:
       status === "active"
-        ? "Published."
+        ? warning
+          ? `Published. ${warning}`
+          : "Published."
         : status === "archived"
           ? "Archived."
           : "Moved to draft.",
@@ -796,6 +862,10 @@ export async function deleteProductAction(input: {
   // After the rows, and never inside the transaction: a rolled-back delete
   // with the files already gone leaves a product whose images are all broken.
   for (const image of images) {
+    // A queued or failed upload never reached storage, so there is no object
+    // to delete — and .replace on null would throw mid-loop, stranding the
+    // images after it.
+    if (!image.url) continue;
     try {
       await storageProvider().remove(image.url.replace(/^\/uploads\//, ""));
     } catch {

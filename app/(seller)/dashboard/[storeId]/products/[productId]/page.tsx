@@ -2,6 +2,7 @@ import { asc, isNotNull } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { EditorMedia } from "@/components/editor/media-context";
 import { Badge } from "@/components/ui/badge";
 import { requireStorePermission } from "@/lib/auth/access";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/catalog/product-editor";
 import { db } from "@/lib/db";
 import { categories } from "@/lib/db/schema";
+import { parseDescriptionDoc } from "@/lib/rich-text/schema";
 import { ProductEditor } from "./product-editor";
 
 export async function generateMetadata({
@@ -46,6 +48,18 @@ export default async function EditProductPage({
       .orderBy(asc(categories.name)),
   ]);
   if (!product) notFound();
+
+  // Re-validated rather than trusted. The column holds whatever passed the
+  // schema when it was written, and handing the editor a shape it cannot
+  // represent would silently discard the seller's copy on their next save.
+  const parsed = product.descriptionDoc
+    ? parseDescriptionDoc(product.descriptionDoc)
+    : null;
+  const parsedDescription = parsed?.ok ? parsed.doc : null;
+
+  const mediaById = new Map<string, EditorMedia>(
+    product.media.map((asset) => [asset.id, asset]),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -94,16 +108,19 @@ export default async function EditProductPage({
 
       <ProductEditor
         storeId={storeId}
+        media={mediaById}
         product={{
           id: product.id,
           title: product.title,
           description: product.description,
+          descriptionDoc: parsedDescription,
           status: product.status,
+          publishMode: product.publishMode,
           stockDisplay: product.stockDisplay,
           lowStockThreshold: product.lowStockThreshold,
           attributes: product.attributes,
           variants: product.variants,
-          images: product.images,
+          media: product.media,
           categoryId: product.categoryId,
           brandId: product.brandId,
           brandName: product.brandName,

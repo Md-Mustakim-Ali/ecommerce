@@ -19,6 +19,12 @@ import {
   tags,
   variantAttributeValues,
 } from "@/lib/db/schema";
+import {
+  readyDescriptionMedia,
+  readyImage,
+  readyMedia,
+  withUrl,
+} from "@/lib/media/filters";
 import { DEFAULT_PER_PAGE, type ProductFilters } from "./filters";
 
 /**
@@ -104,7 +110,7 @@ const reviewAgg = db
   .groupBy(reviews.productId)
   .as("review_agg");
 
-/** First image by position. */
+/** First finished still image by position. */
 const primaryImage = db
   .selectDistinctOn([productImages.productId], {
     productId: productImages.productId,
@@ -112,6 +118,7 @@ const primaryImage = db
     blurDataUrl: productImages.blurDataUrl,
   })
   .from(productImages)
+  .where(readyImage())
   .orderBy(productImages.productId, asc(productImages.position))
   .as("primary_image");
 
@@ -304,6 +311,7 @@ export async function getProductBySlug(slug: string) {
       slug: products.slug,
       title: products.title,
       description: products.description,
+      descriptionDoc: products.descriptionDoc,
       attributes: products.attributes,
       stockDisplay: products.stockDisplay,
       lowStockThreshold: products.lowStockThreshold,
@@ -334,94 +342,117 @@ export async function getProductBySlug(slug: string) {
   if (product.length === 0) return null;
   const row = product[0];
 
-  const [variants, images, productTagRows, variantCombos, imageTags, attrRows] =
-    await Promise.all([
-      db
-        .select()
-        .from(productVariants)
-        .where(eq(productVariants.productId, row.id))
-        .orderBy(asc(productVariants.position)),
-      db
-        .select()
-        .from(productImages)
-        .where(eq(productImages.productId, row.id))
-        .orderBy(asc(productImages.position)),
-      db
-        .select({ name: tags.name, slug: tags.slug })
-        .from(productTags)
-        .innerJoin(tags, eq(tags.id, productTags.tagId))
-        .where(
-          and(eq(productTags.productId, row.id), eq(tags.status, "approved")),
+  const [
+    variants,
+    images,
+    descriptionMedia,
+    productTagRows,
+    variantCombos,
+    imageTags,
+    attrRows,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(productVariants)
+      .where(eq(productVariants.productId, row.id))
+      .orderBy(asc(productVariants.position)),
+    db
+      .select()
+      .from(productImages)
+      // The buyer's gallery. Video belongs here — an unfinished upload does
+      // not, and neither does an asset the seller has since deleted at
+      // Google, which is what `unavailable` means.
+      .where(and(eq(productImages.productId, row.id), readyMedia()))
+      .orderBy(asc(productImages.position)),
+
+    // Description embeds, fetched separately because the document decides
+    // their order and which of them appear at all — position on the row is
+    // meaningless for these.
+    db
+      .select({
+        id: productImages.id,
+        kind: productImages.kind,
+        provider: productImages.provider,
+        url: productImages.url,
+        providerRef: productImages.providerRef,
+        alt: productImages.alt,
+        width: productImages.width,
+        height: productImages.height,
+        blurDataUrl: productImages.blurDataUrl,
+        durationSeconds: productImages.durationSeconds,
+      })
+      .from(productImages)
+      .where(and(eq(productImages.productId, row.id), readyDescriptionMedia())),
+    db
+      .select({ name: tags.name, slug: tags.slug })
+      .from(productTags)
+      .innerJoin(tags, eq(tags.id, productTags.tagId))
+      .where(
+        and(eq(productTags.productId, row.id), eq(tags.status, "approved")),
+      ),
+    // Which combination each variant is. The set of these rows IS the set of
+    // valid combinations — a pairing with no variant simply does not exist.
+    db
+      .select({
+        variantId: variantAttributeValues.variantId,
+        attributeId: variantAttributeValues.attributeId,
+        attributeSlug: attributes.slug,
+        valueId: variantAttributeValues.valueId,
+      })
+      .from(variantAttributeValues)
+      .innerJoin(
+        productVariants,
+        eq(productVariants.id, variantAttributeValues.variantId),
+      )
+      .innerJoin(
+        attributes,
+        eq(attributes.id, variantAttributeValues.attributeId),
+      )
+      .where(eq(productVariants.productId, row.id)),
+    // Image tags, so picking a colour can jump the gallery to that photo.
+    db
+      .select({
+        imageId: productImageAttributeValues.imageId,
+        attributeId: productImageAttributeValues.attributeId,
+        valueId: productImageAttributeValues.valueId,
+      })
+      .from(productImageAttributeValues)
+      .innerJoin(
+        productImages,
+        eq(productImages.id, productImageAttributeValues.imageId),
+      )
+      .where(eq(productImages.productId, row.id)),
+    db
+      .select({
+        attributeId: attributes.id,
+        slug: attributes.slug,
+        name: attributes.name,
+        kind: attributes.kind,
+        unit: attributes.unit,
+        role: productAttributes.role,
+        position: productAttributes.position,
+        valueId: attributeValues.id,
+        value: attributeValues.value,
+        valueSlug: attributeValues.slug,
+        valueMeta: attributeValues.meta,
+        valuePosition: attributeValues.position,
+      })
+      .from(productAttributes)
+      .innerJoin(attributes, eq(attributes.id, productAttributes.attributeId))
+      .innerJoin(
+        productAttributeValues,
+        and(
+          eq(productAttributeValues.productId, productAttributes.productId),
+          eq(productAttributeValues.attributeId, productAttributes.attributeId),
         ),
-      // Which combination each variant is. The set of these rows IS the set of
-      // valid combinations — a pairing with no variant simply does not exist.
-      db
-        .select({
-          variantId: variantAttributeValues.variantId,
-          attributeId: variantAttributeValues.attributeId,
-          attributeSlug: attributes.slug,
-          valueId: variantAttributeValues.valueId,
-        })
-        .from(variantAttributeValues)
-        .innerJoin(
-          productVariants,
-          eq(productVariants.id, variantAttributeValues.variantId),
-        )
-        .innerJoin(
-          attributes,
-          eq(attributes.id, variantAttributeValues.attributeId),
-        )
-        .where(eq(productVariants.productId, row.id)),
-      // Image tags, so picking a colour can jump the gallery to that photo.
-      db
-        .select({
-          imageId: productImageAttributeValues.imageId,
-          attributeId: productImageAttributeValues.attributeId,
-          valueId: productImageAttributeValues.valueId,
-        })
-        .from(productImageAttributeValues)
-        .innerJoin(
-          productImages,
-          eq(productImages.id, productImageAttributeValues.imageId),
-        )
-        .where(eq(productImages.productId, row.id)),
-      db
-        .select({
-          attributeId: attributes.id,
-          slug: attributes.slug,
-          name: attributes.name,
-          kind: attributes.kind,
-          unit: attributes.unit,
-          role: productAttributes.role,
-          position: productAttributes.position,
-          valueId: attributeValues.id,
-          value: attributeValues.value,
-          valueSlug: attributeValues.slug,
-          valueMeta: attributeValues.meta,
-          valuePosition: attributeValues.position,
-        })
-        .from(productAttributes)
-        .innerJoin(attributes, eq(attributes.id, productAttributes.attributeId))
-        .innerJoin(
-          productAttributeValues,
-          and(
-            eq(productAttributeValues.productId, productAttributes.productId),
-            eq(
-              productAttributeValues.attributeId,
-              productAttributes.attributeId,
-            ),
-          ),
-        )
-        .innerJoin(
-          attributeValues,
-          eq(attributeValues.id, productAttributeValues.valueId),
-        )
-        .where(eq(productAttributes.productId, row.id))
-        .orderBy(
-          asc(productAttributes.position),
-          asc(attributeValues.position),
-        ),
-    ]);
+      )
+      .innerJoin(
+        attributeValues,
+        eq(attributeValues.id, productAttributeValues.valueId),
+      )
+      .where(eq(productAttributes.productId, row.id))
+      .orderBy(asc(productAttributes.position), asc(attributeValues.position)),
+  ]);
 
   // Assemble the attribute definitions the product actually offers.
   const attributeMap = new Map<
@@ -487,7 +518,12 @@ export async function getProductBySlug(slug: string) {
       /** attributeId -> valueId. Empty for an option-less default variant. */
       combination: combosByVariant.get(variant.id) ?? {},
     })),
-    images: images.map((image) => ({
+    // withUrl narrows away the null the schema still allows. The query above
+    // already excludes those rows; this is what lets every consumer of a
+    // product detail keep treating url as a string.
+    // Keyed by id because the document references assets by id, not position.
+    descriptionMedia,
+    images: withUrl(images).map((image) => ({
       ...image,
       /** attributeId -> valueId. Empty when the image is not option-specific. */
       tags: tagsByImage.get(image.id) ?? {},
