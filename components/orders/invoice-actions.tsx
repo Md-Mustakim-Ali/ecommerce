@@ -44,11 +44,17 @@ export function InvoiceActions({
           // A real navigation, not next/link: the response is an attachment, so
           // the browser downloads it and stays put. Routing through the client
           // router would try to render a PDF as a page.
-          render={<a href={pdfHref} />}
-        >
-          <Download aria-hidden className="size-4" />
-          Save as PDF
-        </Button>
+          //
+          // The label lives inside the anchor rather than as children of Button.
+          // Both render identically, but only this way can a reader of the JSX —
+          // or a11y lint — see that the link has text.
+          render={
+            <a href={pdfHref}>
+              <Download aria-hidden className="size-4" />
+              Save as PDF
+            </a>
+          }
+        />
 
         <Button size="sm" onClick={() => window.print()}>
           <Printer aria-hidden className="size-4" />
