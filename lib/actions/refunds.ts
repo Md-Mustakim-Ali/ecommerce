@@ -274,6 +274,7 @@ export async function listRefundRequestsAction() {
       storeName: stores.name,
       orderNumber: orders.orderNumber,
       buyerEmail: orders.email,
+      buyerPhone: orders.contactPhone,
       amountCents: refundRequests.amountCents,
       currency: refundRequests.currency,
       reason: refundRequests.reason,

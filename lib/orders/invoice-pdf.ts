@@ -274,7 +274,7 @@ export async function renderInvoicePdf(
   doc.x = left;
   drawRuns(
     doc,
-    `${address(invoice.billingAddress ?? invoice.shippingAddress)}\n${invoice.buyerEmail}`,
+    `${address(invoice.billingAddress ?? invoice.shippingAddress)}\n${invoice.buyerEmail ?? invoice.buyerPhone}`,
     { width: colWidth },
   );
   const billedBottom = doc.y;

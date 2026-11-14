@@ -22,7 +22,16 @@ import { paymentMethods } from "@/lib/payments/methods";
 
 const schema = z.object({
   variantId: z.uuid(),
-  email: z.email(),
+  /**
+   * Optional since a buyer may check out with a number instead.
+   *
+   * Both contacts are exposed here rather than only email, because
+   * "phone-only order, then claimed by an account" is a path that cannot be
+   * exercised any other way without reimplementing the server action's
+   * encoding by hand — the same reason this endpoint exists at all.
+   */
+  email: z.email().optional(),
+  contactPhone: z.string().trim().max(40).optional(),
   /**
    * Defaults to the offline path, which is what the load test wants — it
    * measures our own checkout rather than a round trip to Jomma.
@@ -38,6 +47,13 @@ const schema = z.object({
    * exercise validation.
    */
   phone: z.string().trim().max(40).optional(),
+  /**
+   * Exposed for the same reason the contacts are: a redemption is now recorded
+   * against whichever contact the buyer gave, and the per-customer limit has
+   * to keep counting when that contact is a number rather than an address.
+   * Neither is reachable without going through the real action.
+   */
+  discountCode: z.string().trim().max(60).optional(),
 });
 
 export async function POST(request: Request) {
@@ -57,6 +73,8 @@ export async function POST(request: Request) {
 
     const result = await placeOrderAction({
       email: parsed.data.email,
+      contactPhone: parsed.data.contactPhone,
+      discountCode: parsed.data.discountCode,
       paymentMethod: parsed.data.paymentMethod,
       shippingAddress: {
         recipientName: "Load Test",

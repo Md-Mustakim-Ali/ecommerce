@@ -12,7 +12,8 @@ type Request = {
   id: string;
   storeName: string;
   orderNumber: string;
-  buyerEmail: string;
+  /** Email or phone, whichever the order was placed with. */
+  buyerContact: string;
   amountCents: number;
   grossCents: number;
   currency: string;
@@ -68,7 +69,7 @@ function Row({ request }: { request: Request }) {
             {partial ? <Badge variant="outline">partial</Badge> : null}
           </span>
           <span className="text-muted-foreground text-xs">
-            {request.storeName} · {request.buyerEmail} ·{" "}
+            {request.storeName} · {request.buyerContact} ·{" "}
             {new Date(request.createdAt).toLocaleDateString()}
           </span>
           <span className="text-muted-foreground text-xs">

@@ -180,7 +180,10 @@ async function notifyShipped(subOrderId: string) {
     .where(eq(subOrders.id, subOrderId))
     .limit(1);
 
-  if (!row) return;
+  // Nothing to email a buyer who checked out with a number alone. The
+  // shipment still shows on their order page; an SMS notice is the follow-up
+  // once lib/sms has a real gateway.
+  if (!row?.email) return;
 
   await sendEmail(
     shipmentNotice({

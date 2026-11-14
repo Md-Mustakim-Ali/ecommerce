@@ -22,7 +22,18 @@ import {
 export type PlaceOrderInput = {
   cartId: string;
   buyerId: string | null;
-  email: string;
+  /**
+   * How to reach the buyer. At least one, enforced by a check constraint on
+   * the table as well as by the checkout schema — the load test and the seed
+   * script write orders without going through either.
+   *
+   * `contactPhone` is the buyer's own number, canonical `01XXXXXXXXX`, and is
+   * not the same thing as `shippingAddress.phone`. That one is where the
+   * parcel goes; this one is who bought it, and it is what an account claims
+   * its order history by.
+   */
+  email: string | null;
+  contactPhone: string | null;
   shippingAddress: AddressSnapshot;
   billingAddress?: AddressSnapshot;
   currency: string;
@@ -173,6 +184,7 @@ export async function placeOrder(
         buyerId: input.buyerId,
         orderNumber,
         email: input.email,
+        contactPhone: input.contactPhone,
         status: "pending",
         subtotalCents: totals.subtotalCents,
         shippingCents: totals.shippingCents,
@@ -287,7 +299,10 @@ export async function placeOrder(
         discountId: input.discount.id,
         orderId: order.id,
         userId: input.buyerId,
+        // Both, so the per-customer limit can recognise this buyer again
+        // whichever contact they check out with next time.
         email: input.email,
+        contactPhone: input.contactPhone,
         amountCents: input.discount.amountCents,
       });
     }

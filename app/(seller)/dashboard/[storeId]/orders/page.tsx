@@ -133,6 +133,7 @@ export default async function StoreOrdersPage({
                   status: order.status,
                   orderNumber: order.orderNumber,
                   buyerEmail: order.buyerEmail,
+                  buyerPhone: order.buyerPhone,
                   placedAt: order.placedAt?.toISOString() ?? null,
                   subtotalCents: order.subtotalCents,
                   shippingCents: order.shippingCents,

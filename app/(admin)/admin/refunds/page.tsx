@@ -34,7 +34,7 @@ export default async function AdminRefundsPage() {
           id: r.id,
           storeName: r.storeName,
           orderNumber: r.orderNumber,
-          buyerEmail: r.buyerEmail,
+          buyerContact: r.buyerEmail ?? r.buyerPhone ?? "",
           amountCents: r.amountCents,
           grossCents: r.subtotalCents + r.shippingCents,
           currency: r.currency,

@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { phoneNumber } from "better-auth/plugins";
 // Relative, not "@/lib/...": the `auth` CLI loads this file through jiti, which
 // does not resolve tsconfig path aliases. Keep these two imports relative or
 // `pnpm auth:generate` breaks.
@@ -8,6 +9,12 @@ import { db } from "../db";
 import { emailIsConfigured, sendEmail } from "../email";
 import { resetPassword, verifyEmail } from "../email/templates";
 import { env } from "../env";
+import { claimOrdersForContact } from "../orders/claim";
+import { sendSms } from "../sms";
+import { normaliseBdMobile } from "../validation/phone";
+import { isPlaceholderEmail, placeholderEmailFor } from "./placeholder-email";
+
+export { isPlaceholderEmail, placeholderEmailFor };
 
 export const auth = betterAuth({
   appName: "ecommerce",
@@ -45,7 +52,30 @@ export const auth = betterAuth({
     // the password they just chose is a step with no security value.
     autoSignInAfterVerification: true,
     async sendVerificationEmail({ user: account, url }) {
+      // A phone-only account has a placeholder here. There is nothing to
+      // verify and nowhere to send it.
+      if (isPlaceholderEmail(account.email)) return;
       await sendEmail(verifyEmail({ to: account.email, url }));
+    },
+
+    /**
+     * Where a guest's past orders become their order history.
+     *
+     * On verification, not on sign-up, and that is the whole security model.
+     * Signing up proves you can type an address; verifying proves you receive
+     * mail at it. Attaching on sign-up would let anyone enter a stranger's
+     * address and read their delivery addresses, phone number and purchase
+     * history — which is most of what an account holds.
+     *
+     * The buyer is asked for nothing. They verify, as they already had to,
+     * and the orders are there.
+     */
+    async afterEmailVerification(account) {
+      if (isPlaceholderEmail(account.email)) return;
+      await claimOrdersForContact({
+        userId: account.id,
+        email: account.email,
+      });
     },
   },
 
@@ -63,8 +93,57 @@ export const auth = betterAuth({
     useSecureCookies: process.env.NODE_ENV === "production",
   },
 
-  // nextCookies() must stay last — it reads cookies set by earlier plugins.
-  plugins: [nextCookies()],
+  plugins: [
+    /**
+     * Phone as a first-class identifier, not a profile field.
+     *
+     * This marketplace settles in BDT through bKash and Nagad, and its buyers
+     * are reachable by number far more reliably than by email. The plugin adds
+     * `user.phoneNumber` and `user.phoneNumberVerified` and a sign-in route
+     * that takes a number instead of an address.
+     */
+    phoneNumber({
+      // The same rule checkout uses. Two validators disagreeing about what a
+      // Bangladeshi mobile is would mean a number accepted on an order that
+      // can never be registered, so there is only one.
+      phoneNumberValidator: (input) => normaliseBdMobile(input) !== null,
+
+      async sendOTP({ phoneNumber: to, code }) {
+        await sendSms({
+          to,
+          body: `${code} is your verification code. It expires in 5 minutes. Do not share it with anyone.`,
+        });
+      },
+
+      async sendPasswordResetOTP({ phoneNumber: to, code }) {
+        await sendSms({
+          to,
+          body: `${code} is your password reset code. It expires in 5 minutes. If you did not ask for it, ignore this message.`,
+        });
+      },
+
+      /**
+       * Registration by number alone. The account is created at verification
+       * rather than before it, so an unverified number never occupies one.
+       */
+      signUpOnVerification: {
+        getTempEmail: placeholderEmailFor,
+        // The number, until they choose a name. Better than "user_a1b2c3".
+        getTempName: (phone) => phone,
+      },
+
+      /** The phone half of claiming. Same rule as email: verified, then attached. */
+      async callbackOnVerification({ user: account }) {
+        await claimOrdersForContact({
+          userId: account.id,
+          phone: account.phoneNumber,
+        });
+      },
+    }),
+
+    // nextCookies() must stay last — it reads cookies set by earlier plugins.
+    nextCookies(),
+  ],
 });
 
 export type Session = typeof auth.$Infer.Session;

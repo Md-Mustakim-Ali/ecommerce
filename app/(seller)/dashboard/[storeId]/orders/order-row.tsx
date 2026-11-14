@@ -38,7 +38,9 @@ export type SellerOrder = {
     | "cancelled"
     | "refunded";
   orderNumber: string;
-  buyerEmail: string;
+  /** One of these is always present; the orders table has a check saying so. */
+  buyerEmail: string | null;
+  buyerPhone: string | null;
   placedAt: string | null;
   subtotalCents: number;
   shippingCents: number;
@@ -136,7 +138,8 @@ export function OrderRow({
               {order.orderNumber}
             </span>
             <span className="block truncate text-secondary-text text-xs">
-              {units} {units === 1 ? "item" : "items"} · {order.buyerEmail}
+              {units} {units === 1 ? "item" : "items"} ·{" "}
+              {order.buyerEmail ?? order.buyerPhone}
               {order.placedAt
                 ? ` · ${new Date(order.placedAt).toLocaleDateString()}`
                 : ""}
@@ -495,7 +498,8 @@ export function OrderRow({
           <OrderThread
             storeId={storeId}
             subOrderId={order.id}
-            buyerEmail={order.buyerEmail}
+            buyerContact={order.buyerEmail ?? order.buyerPhone ?? ""}
+            buyerHasEmail={order.buyerEmail !== null}
             permissions={{
               note: permissions.note,
               contact: permissions.contact,

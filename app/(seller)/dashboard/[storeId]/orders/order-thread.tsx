@@ -28,12 +28,23 @@ import {
 export function OrderThread({
   storeId,
   subOrderId,
-  buyerEmail,
+  buyerContact,
+  buyerHasEmail,
   permissions,
 }: {
   storeId: string;
   subOrderId: string;
-  buyerEmail: string;
+  /** Whichever contact the order carries — an address or a number. */
+  buyerContact: string;
+  /**
+   * Whether a message actually leaves as mail.
+   *
+   * A buyer who checked out with a number alone gets nothing in an inbox: the
+   * message appears on their order page and that is all. Telling a seller "goes
+   * to 01712345678" when no SMS gateway exists would be a promise the platform
+   * does not keep, and sellers chase orders on the strength of it.
+   */
+  buyerHasEmail: boolean;
   permissions: { note: boolean; contact: boolean };
 }) {
   const [notes, setNotes] = useState<OrderNote[] | null>(null);
@@ -187,7 +198,7 @@ export function OrderThread({
             required
             placeholder={
               visibility === "buyer"
-                ? `Message ${buyerEmail}…`
+                ? `Message ${buyerContact}…`
                 : "Internal note — the buyer never sees this."
             }
             className="w-full resize-y rounded-md border border-border bg-surface-1 px-3 py-2 text-sm outline-none placeholder:text-tertiary-text focus-visible:border-accent"
@@ -212,7 +223,9 @@ export function OrderThread({
             */}
             {permissions.contact && !permissions.note ? (
               <span className="text-tertiary-text text-xs">
-                Goes to {buyerEmail}.
+                {buyerHasEmail
+                  ? `Goes to ${buyerContact}.`
+                  : "Shows on the buyer's order page. They gave no email address, so nothing is sent."}
               </span>
             ) : null}
             {permissions.note && !permissions.contact ? (

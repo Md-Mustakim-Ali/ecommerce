@@ -8,6 +8,7 @@ import {
   stores,
   subOrders,
 } from "@/lib/db/schema";
+import { orderBelongsTo } from "./ownership";
 
 /**
  * Invoice data.
@@ -106,7 +107,13 @@ export type Invoice = {
    */
   paymentReference: string | null;
 
-  buyerEmail: string;
+  /**
+   * How the buyer was reached. Whichever they gave — an invoice for a
+   * phone-only order prints the number, because a document with no way to
+   * identify the customer is no use to either side in a dispute.
+   */
+  buyerEmail: string | null;
+  buyerPhone: string | null;
   shippingAddress: AddressSnapshot;
   billingAddress: AddressSnapshot | null;
 
@@ -189,6 +196,7 @@ export async function getInvoiceForBuyer(input: {
   orderId: string;
   userId: string | null;
   email?: string;
+  phone?: string;
 }): Promise<Invoice | null> {
   const [order] = await db
     .select()
@@ -198,11 +206,7 @@ export async function getInvoiceForBuyer(input: {
 
   if (!order) return null;
 
-  const ownedByUser = input.userId !== null && order.buyerId === input.userId;
-  const ownedByEmail =
-    input.email !== undefined &&
-    order.email.toLowerCase() === input.email.toLowerCase();
-  if (!ownedByUser && !ownedByEmail) return null;
+  if (!orderBelongsTo(order, input)) return null;
 
   const subs = await db
     .select({
@@ -251,6 +255,7 @@ export async function getInvoiceForBuyer(input: {
     payment: order.status,
     paymentReference: order.paymentIntentId,
     buyerEmail: order.email,
+    buyerPhone: order.contactPhone,
     shippingAddress: order.shippingAddress,
     billingAddress: order.billingAddress,
     groups,
@@ -295,6 +300,7 @@ export async function getInvoiceForStore(input: {
       paymentIntentId: orders.paymentIntentId,
       currency: orders.currency,
       buyerEmail: orders.email,
+      buyerPhone: orders.contactPhone,
       shippingAddress: orders.shippingAddress,
       billingAddress: orders.billingAddress,
       placedAt: orders.placedAt,
@@ -336,6 +342,7 @@ export async function getInvoiceForStore(input: {
     payment: row.orderStatus,
     paymentReference: row.paymentIntentId,
     buyerEmail: row.buyerEmail,
+    buyerPhone: row.buyerPhone,
     shippingAddress: row.shippingAddress,
     billingAddress: row.billingAddress,
     groups: [

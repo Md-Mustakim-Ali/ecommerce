@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PlacementSlot } from "@/components/content/placement-slot";
 import { Button } from "@/components/ui/button";
 import { getSession } from "@/lib/auth/guards";
+import { isPlaceholderEmail } from "@/lib/auth/placeholder-email";
 import { getCart } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { addresses } from "@/lib/db/schema";
@@ -75,7 +76,14 @@ export default async function CheckoutPage() {
         // browser, and offering a method that cannot start is worse than not
         // offering it.
         jommaAvailable={jommaConfigured()}
-        defaultEmail={session?.user.email ?? ""}
+        // A placeholder address belongs to a phone-only account and is not
+        // something to prefill a receipt field with.
+        defaultEmail={
+          session && !isPlaceholderEmail(session.user.email)
+            ? session.user.email
+            : ""
+        }
+        defaultContactPhone={session?.user.phoneNumber ?? ""}
         savedAddresses={savedAddresses}
         // Guests have no address book to save into, so the offer is not made.
         signedIn={Boolean(session)}

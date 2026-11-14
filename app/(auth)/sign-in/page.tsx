@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/guards";
+import { phoneAuthAvailable } from "@/lib/sms";
 import { safeNextPath } from "@/lib/validation/redirect";
 import { SignInForm } from "./sign-in-form";
 
@@ -16,5 +17,5 @@ export default async function SignInPage({
 
   if (await getSession()) redirect(next);
 
-  return <SignInForm next={next} />;
+  return <SignInForm next={next} phoneAvailable={phoneAuthAvailable()} />;
 }
