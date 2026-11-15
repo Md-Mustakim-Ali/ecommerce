@@ -218,10 +218,13 @@ revoked after 24 hours.
 Then, locally:
 
 ```bash
-GMAIL_CLIENT_ID="…apps.googleusercontent.com" \
-GMAIL_CLIENT_SECRET="…" \
-pnpm tsx scripts/gmail-authorise.mts
+pnpm tsx scripts/gmail-authorise.mts <client-id> <client-secret>
 ```
+
+Arguments rather than `FOO=bar cmd`, which is bash syntax: this project is
+developed on Windows, and PowerShell reads that form as a command name and
+fails with "is not recognized as a cmdlet". Arguments behave the same in every
+shell.
 
 It opens a consent URL, catches the redirect on localhost, and prints the three
 values to put in Render. `EMAIL_FROM` is the address you approved — Gmail

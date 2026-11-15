@@ -12,10 +12,23 @@
  * when mail is not arriving: `console` means the environment variables are not
  * set the way you think, and nothing was ever going to be sent.
  *
- * Against production, without touching .env.local:
+ * To check the values Render holds rather than the ones on your machine, set
+ * them in the shell first. PowerShell, which is what this project is developed
+ * in — `FOO=bar cmd` is bash syntax and PowerShell reads it as a command name:
+ *
+ *   $env:GMAIL_CLIENT_ID="…"
+ *   $env:GMAIL_CLIENT_SECRET="…"
+ *   $env:GMAIL_REFRESH_TOKEN="…"
+ *   $env:EMAIL_FROM="…"
+ *   pnpm tsx scripts/verify-email.ts you@gmail.com
+ *
+ * bash or zsh:
  *
  *   GMAIL_CLIENT_ID="…" GMAIL_CLIENT_SECRET="…" GMAIL_REFRESH_TOKEN="…" \
- *   EMAIL_FROM="…" pnpm tsx scripts/verify-email.ts you@gmail.com
+ *     EMAIL_FROM="…" pnpm tsx scripts/verify-email.ts you@gmail.com
+ *
+ * Note `pnpm tsx`, not `pnpm verify:email` — the latter loads .env.local,
+ * which would override what you just set.
  */
 
 import { emailProvider, sendEmail } from "@/lib/email";

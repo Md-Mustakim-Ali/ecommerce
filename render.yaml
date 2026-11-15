@@ -74,7 +74,7 @@ services:
       #
       # GMAIL_REFRESH_TOKEN comes from a one-time local consent, since Google
       # will not issue one non-interactively:
-      #   pnpm tsx scripts/gmail-authorise.mts
+      #   pnpm tsx scripts/gmail-authorise.mts <client-id> <client-secret>
       #
       # Publish the Cloud project's OAuth consent screen first, or Google
       # expires the refresh token after seven days and mail stops.

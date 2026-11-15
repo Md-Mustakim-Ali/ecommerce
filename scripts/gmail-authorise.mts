@@ -5,7 +5,13 @@
  * this cannot be done from the Render dashboard. Run it once on your machine
  * and paste the result into the environment.
  *
- *   pnpm tsx scripts/gmail-authorise.mts
+ *   pnpm tsx scripts/gmail-authorise.mts <client-id> <client-secret>
+ *
+ * Arguments rather than environment variables, because `FOO=bar cmd` is bash
+ * syntax and this project is developed on Windows, where PowerShell reads it
+ * as a command name and fails with "is not recognized as a cmdlet". Arguments
+ * work identically in every shell. The environment variables are still read if
+ * they happen to be set, so `--env-file=.env.local` also works.
  *
  * Before you run it, in console.cloud.google.com. The console reorganised what
  * used to be one "OAuth consent screen" page into **Google Auth Platform**,
@@ -57,8 +63,11 @@
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 
-const CLIENT_ID = process.env.GMAIL_CLIENT_ID;
-const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET;
+// Arguments first, environment second. See the header: the environment form is
+// bash-only syntax and silently fails on PowerShell.
+const CLIENT_ID = process.argv[2]?.trim() || process.env.GMAIL_CLIENT_ID;
+const CLIENT_SECRET =
+  process.argv[3]?.trim() || process.env.GMAIL_CLIENT_SECRET;
 
 /** Only the ability to send. Not read, not modify — this app never needs them. */
 const SCOPE = "https://www.googleapis.com/auth/gmail.send";
@@ -68,13 +77,16 @@ const REDIRECT_URI = `http://localhost:${PORT}`;
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error(
     [
-      "Set the client credentials first:",
+      "Pass the client credentials as arguments:",
       "",
-      '  GMAIL_CLIENT_ID="…apps.googleusercontent.com" \\',
-      '  GMAIL_CLIENT_SECRET="…" \\',
-      "  pnpm tsx scripts/gmail-authorise.mts",
+      "  pnpm tsx scripts/gmail-authorise.mts <client-id> <client-secret>",
       "",
-      "Both come from Credentials → Create OAuth client ID → Desktop app.",
+      "for example:",
+      "",
+      "  pnpm tsx scripts/gmail-authorise.mts 1234-abc.apps.googleusercontent.com GOCSPX-xxxx",
+      "",
+      "Both come from Google Auth Platform → Clients → Create client →",
+      "Desktop app.",
     ].join("\n"),
   );
   process.exit(1);
