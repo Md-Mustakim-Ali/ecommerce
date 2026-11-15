@@ -148,12 +148,15 @@ export class GmailEmailProvider implements EmailProvider {
     } | null;
 
     if (!response.ok || !body?.access_token) {
-      // invalid_grant here almost always means one thing, and it is worth
-      // naming: the consent screen is still in Testing, so Google expired the
-      // refresh token seven days after it was issued.
+      // invalid_grant means the refresh token is dead, and there are only a
+      // few ways that happens. Naming them turns a generic OAuth error into
+      // something actionable, because none of them are guessable from the
+      // message Google returns.
       const hint =
         body?.error === "invalid_grant"
-          ? " The refresh token is dead — publish the OAuth consent screen and re-run scripts/gmail-authorise.mts."
+          ? " The refresh token is dead. Usually the project was still in Testing when it was minted, so Google expired it after seven days" +
+            " — publishing later does not rescue a token already issued. It is also revoked when the account's password is reset, or after six months unused." +
+            " Re-run scripts/gmail-authorise.mts once the project is published."
           : "";
       throw new Error(
         `Gmail token refresh failed (${response.status}): ${body?.error_description ?? body?.error ?? "no access_token"}.${hint}`,

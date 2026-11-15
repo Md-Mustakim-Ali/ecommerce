@@ -169,16 +169,36 @@ reached on port 465 or 587 is unusable there — both adapters are HTTPS APIs.
 #### Setting Gmail up
 
 In [console.cloud.google.com](https://console.cloud.google.com), on any
-project:
+project. What used to be a single "OAuth consent screen" page is now **Google
+Auth Platform**, split into Branding, Audience, Data Access and Clients — so
+these steps are spread across those tabs:
 
-1. Enable the **Gmail API**.
-2. **OAuth consent screen** → add yourself as a test user → then **publish it**.
-   Do not skip publishing. While the screen is in "Testing", Google expires
-   refresh tokens after **seven days**: mail works for a week, then stops, and
-   nothing surfaces until something tries to send.
-3. **Credentials → Create OAuth client ID → Desktop app.** Desktop clients may
-   use the loopback redirect the script listens on; a Web client would need the
-   URI registered.
+1. Enable the **Gmail API**. Google Auth Platform does not appear in the menu
+   until some OAuth-capable API is enabled on the project.
+2. **Google Auth Platform → Branding** — app name and contact email.
+3. **Google Auth Platform → Data Access** → Add or remove scopes → add
+   `https://www.googleapis.com/auth/gmail.send`. Scopes moved here; they are no
+   longer on the consent screen page.
+4. **Google Auth Platform → Audience → Publish app.** Do this *before* minting
+   a token, not after.
+5. **Google Auth Platform → Clients → Create client → Desktop app.** Desktop
+   clients may use the loopback redirect the script listens on; a Web client
+   would need the URI registered.
+
+Step 4 is the one that bites, and the ordering is the point. While the project
+is in Testing, Google expires refresh tokens **seven days** from consent — and
+publishing afterwards does not rescue a token already issued under that rule.
+It keeps its seven-day clock. Publish first, then mint.
+
+You will see a "Google hasn't verified this app" screen, and the project is
+capped at 100 authorising users for its lifetime. Neither matters here:
+`gmail.send` is a *sensitive* scope rather than a restricted one, so no
+security assessment applies, and the only account that ever authorises this is
+the shop's own sending address. Verification — 3 to 5 business days — is for
+apps that other people sign in to.
+
+Do not substitute Google's OAuth Playground for the script: tokens it mints are
+revoked after 24 hours.
 
 Then, locally:
 
@@ -196,6 +216,12 @@ ignored rather than honoured.
 The limits are real but generous for a young shop: **500 recipients a day** on
 a free Gmail account, 2,000 on Workspace. Deliverability to non-Gmail inboxes is
 adequate, not excellent.
+
+The refresh token is long-lived, not permanent. Google also revokes it when the
+sending account's **password is reset** — which for a Gmail scope is policy,
+not an edge case — and after six months unused. Both present the same way:
+`invalid_grant`, and mail stops. The adapter names all three causes in the
+error rather than making you look them up. Re-run the script to recover.
 
 #### Or no email at all
 

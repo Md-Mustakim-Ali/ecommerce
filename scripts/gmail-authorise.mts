@@ -7,21 +7,45 @@
  *
  *   pnpm tsx scripts/gmail-authorise.mts
  *
- * Before you run it, in console.cloud.google.com:
+ * Before you run it, in console.cloud.google.com. The console reorganised what
+ * used to be one "OAuth consent screen" page into **Google Auth Platform**,
+ * with separate Branding, Audience, Data Access and Clients tabs, so the steps
+ * are spread across them:
  *
- *   1. Enable the **Gmail API** for the project.
- *   2. OAuth consent screen → add yourself as a user, then **PUBLISH IT**.
- *      This is the step that matters. While the screen is in "Testing" Google
- *      expires refresh tokens after seven days, so email works for a week and
- *      then stops with nothing in the logs until something tries to send.
- *   3. Credentials → Create OAuth client ID → **Desktop app**. Desktop clients
- *      are allowed to use the loopback redirect this script listens on;
- *      a Web client would need the URI registered and is more setup.
+ *   1. Enable the **Gmail API** for the project. Google Auth Platform does not
+ *      appear in the menu at all until some OAuth-capable API is enabled.
+ *   2. Google Auth Platform → **Branding**: app name and contact email.
+ *   3. Google Auth Platform → **Data Access** → Add or remove scopes → add
+ *      `https://www.googleapis.com/auth/gmail.send`.
+ *   4. Google Auth Platform → **Audience** → **Publish app**, moving it from
+ *      Testing to In production.
  *
- * Then export the two values it gives you and run this.
+ *      Do this BEFORE running this script, not after. While the project is in
+ *      Testing, Google expires refresh tokens seven days from consent — and
+ *      publishing later does not rescue a token already minted under that
+ *      rule. A token issued in Testing keeps its seven-day clock, so the order
+ *      here is the whole point.
+ *
+ *      `gmail.send` is a *sensitive* scope, so an unverified app shows the
+ *      "Google hasn't verified this app" screen and is capped at 100 users for
+ *      the lifetime of the project. Neither matters here: the only account
+ *      that ever authorises this is the shop's own sending address, and one is
+ *      a long way from a hundred. Verification (3–5 days) is for apps that
+ *      other people sign in to.
+ *
+ *   5. Google Auth Platform → **Clients** → Create client → **Desktop app**.
+ *      Desktop clients may use the loopback redirect this script listens on;
+ *      a Web client would need the URI registered.
+ *
+ * Do not use Google's OAuth Playground instead of this script — tokens it
+ * mints are revoked after 24 hours.
  *
  * The refresh token is a long-lived credential for sending mail as you. Treat
  * it like a password: it goes in .env.local and Render, never in git.
+ *
+ * It is long-lived, not permanent. Google also revokes it if the account's
+ * password is reset — which for a Gmail scope is not an edge case — or if it
+ * goes six months unused.
  */
 
 import { randomBytes } from "node:crypto";
