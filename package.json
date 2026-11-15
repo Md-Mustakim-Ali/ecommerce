@@ -28,6 +28,7 @@
     "db:verify-backup": "tsx --env-file=.env.local scripts/backup.ts verify",
     "verify:auth": "tsx --env-file=.env.local scripts/verify-authorization.ts",
     "verify:a11y": "tsx --env-file=.env.local scripts/verify-accessibility.ts",
+    "verify:email": "tsx --env-file=.env.local scripts/verify-email.ts",
     "load:checkout": "tsx --env-file=.env.local scripts/load-test-checkout.ts"
   },
   "dependencies": {
