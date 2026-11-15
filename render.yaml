@@ -50,6 +50,52 @@ services:
       - key: BETTER_AUTH_URL
         sync: false
 
+      # ── Transactional email ──────────────────────────────────────────────
+      # Both or neither. Without them the console adapter takes over and
+      # refuses to send in production, so no receipts and no verification mail.
+      #
+      # Filling these in also flips `requireEmailVerification` on, because it
+      # follows whether email is configured. Existing accounts with
+      # email_verified = false can no longer sign in until they verify — check
+      # that count before setting these on a database that already has users.
+      # It is also what attaches a guest's past orders to a new account, so
+      # until these exist that path never fires.
+      - key: RESEND_API_KEY
+        sync: false
+      # Must be on a domain verified with Resend, or everything bounces.
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_REPLY_TO
+        sync: false
+
+      # ── Google media connections ─────────────────────────────────────────
+      # Base64 of 32 random bytes, and it must decode to exactly 32 or
+      # lib/media/crypto.ts throws. NOT generateValue — Render's generator does
+      # not produce a 32-byte base64 key, and the failure only shows up when a
+      # seller first connects Google:
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      #
+      # Rotating it strands every existing connection; every seller has to
+      # reconnect.
+      - key: GOOGLE_TOKEN_ENCRYPTION_KEY
+        sync: false
+
+      # Bearer token for POST /api/media/sweep. Absent closes the endpoint
+      # rather than opening it, so a forgotten value fails safe. Generated
+      # here because any value over 16 characters works — nothing else needs
+      # to know it except whatever pokes the endpoint.
+      #
+      # Render's free plan has no cron, so something external has to call it:
+      # a scheduled GitHub Action is the cheapest option that actually runs.
+      - key: MEDIA_SWEEP_SECRET
+        generateValue: true
+
+      # ── Observability ────────────────────────────────────────────────────
+      - key: APP_ENV
+        value: production
+      - key: SENTRY_DSN
+        sync: false
+
       # ── Jomma ────────────────────────────────────────────────────────────
       # JOMMA_URL is jomma-web's APP_URL.
       # JOMMA_WEBHOOK_SECRET is jomma-web's WEBHOOK_SIGNING_SECRET — the same
