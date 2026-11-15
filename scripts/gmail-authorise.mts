@@ -20,13 +20,20 @@
  *
  *   1. Enable the **Gmail API** for the project. Google Auth Platform does not
  *      appear in the menu at all until some OAuth-capable API is enabled.
- *   2. Google Auth Platform → **Branding**: app name and the two contact
- *      emails, and nothing else. Leave App domain and Authorized domains
- *      empty — the latter only constrains domains you actually reference, and
- *      a Desktop client redirects to loopback rather than a domain. They are
- *      required only for verification, which also demands a home page on a
- *      domain you own; there is none here, and onrender.com is Render's.
- *      Branding saves as a draft behind its own "Publish branding" button.
+ *   2. Google Auth Platform → **Branding**: app name, the two contact emails,
+ *      an Application home page, and that same host under Authorized domains:
+ *
+ *        Application home page:  https://<your-service>.onrender.com/
+ *        Authorized domain 1:    <your-service>.onrender.com
+ *
+ *      The last two are not optional despite carrying no asterisk. Without
+ *      them the Audience page reports "Your app's OAuth configuration is
+ *      incomplete" and leaves Publish app greyed out without naming a field.
+ *      The Render subdomain is accepted because onrender.com is on the Public
+ *      Suffix List, making it registrable in its own right.
+ *
+ *      Skip the logo — uploading one forces verification. Branding saves as a
+ *      draft behind its own "Publish branding" button.
  *   3. Google Auth Platform → **Data Access** → Add or remove scopes → add
  *      `https://www.googleapis.com/auth/gmail.send`.
  *   4. Google Auth Platform → **Audience** → **Publish app**, moving it from

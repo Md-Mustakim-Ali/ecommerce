@@ -117,13 +117,21 @@ Then mint an API key in the Jomma dashboard for the storefront.
 | Variable | Value |
 |---|---|
 | `DATABASE_URL` | The PG 18 Neon project, pooled |
-| `BETTER_AUTH_URL` | `https://ecommerce-web.onrender.com` |
+| `BETTER_AUTH_URL` | The service's own URL, copied from the Render dashboard |
 | `JOMMA_URL` | Jomma's `APP_URL` |
 | `JOMMA_API_KEY` | The key you just minted |
 | `JOMMA_WEBHOOK_SECRET` | The `whsec_…` shown when you create the webhook endpoint (step 5) |
 | `R2_*` | The five from step 2 |
 
 `BETTER_AUTH_SECRET` and `MEDIA_SWEEP_SECRET` are generated for you.
+
+**Copy the hostname, do not assume it.** Render appends a random suffix when
+the service name is already taken, so `ecommerce-web` can deploy as
+`ecommerce-web-jy5n.onrender.com`. Every value below that embeds the hostname —
+`BETTER_AUTH_URL`, the Google callback URI, the sweep cron URL — has to match
+the real one exactly. `BETTER_AUTH_URL` is the cruel one: Better Auth compares
+the request Origin against it and returns 403 on a mismatch, which presents as
+sign-in silently failing rather than as an error anyone can read.
 
 These four are optional — the app boots without them and simply does less:
 
@@ -178,16 +186,26 @@ these steps are spread across those tabs:
 2. **Google Auth Platform → Branding** — app name, user support email and
    developer contact email. That is all of it.
 
-   Leave **App domain** (home page, privacy policy, terms of service) and
-   **Authorized domains** empty. Authorized domains exists to constrain domains
-   you actually reference — the App domain URLs above, and the redirect URIs of
-   a *Web application* client. A Desktop client redirects to loopback, so there
-   is no domain to register and nothing to verify in Search Console.
+   Then fill in **App domain → Application home page** and add the same host
+   under **Authorized domains**:
 
-   Those fields become mandatory only when you submit for **verification**,
-   which also requires the home page and privacy policy to live on a domain you
-   own. That is a road worth not starting down: this shop has no domain, and
-   `onrender.com` belongs to Render, so it can never be verified here.
+   ```
+   Application home page:  https://<your-service>.onrender.com/
+   Authorized domain 1:    <your-service>.onrender.com
+   ```
+
+   These are not optional, whatever the lack of an asterisk suggests. With them
+   blank, the Audience page shows "Your app's OAuth configuration is
+   incomplete" and the **Publish app** button stays greyed out, naming no field
+   — publishing an External app that requests a sensitive scope requires them.
+
+   The Render subdomain is accepted here. `onrender.com` is on the Public
+   Suffix List, so `<your-service>.onrender.com` counts as a registrable domain
+   in its own right rather than as somebody else's subdomain.
+
+   Leave the logo empty: uploading one forces verification. Privacy policy and
+   terms can stay empty unless publishing complains about them, in which case
+   they need real pages on that host.
 
    Branding edits save as a draft. There is a separate **Publish branding**
    button, distinct from publishing the app in step 4.
@@ -308,7 +326,7 @@ Render's free plan has no cron, so this needs an external poker exactly like
 Jomma's. On cron-job.org:
 
 ```
-POST https://ecommerce-web.onrender.com/api/media/sweep
+POST https://<your-service>.onrender.com/api/media/sweep
 Authorization: Bearer <MEDIA_SWEEP_SECRET from Render>
 ```
 
@@ -327,7 +345,7 @@ projects must list this app's callback as an authorised redirect URI. It is
 built from `BETTER_AUTH_URL`:
 
 ```
-https://ecommerce-web.onrender.com/api/google/callback
+https://<your-service>.onrender.com/api/google/callback
 ```
 
 A localhost URI left over from development fails at the moment a seller clicks

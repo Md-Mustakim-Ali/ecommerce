@@ -58,7 +58,7 @@ services:
       # the request Origin against it and returns 403 INVALID_ORIGIN on a
       # mismatch, which presents as sign-in silently failing rather than as an
       # error. Set it after the first deploy names the service:
-      #   https://ecommerce-web.onrender.com
+      #   https://<your-service>.onrender.com
       - key: BETTER_AUTH_URL
         sync: false
 
