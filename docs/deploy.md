@@ -175,7 +175,22 @@ these steps are spread across those tabs:
 
 1. Enable the **Gmail API**. Google Auth Platform does not appear in the menu
    until some OAuth-capable API is enabled on the project.
-2. **Google Auth Platform → Branding** — app name and contact email.
+2. **Google Auth Platform → Branding** — app name, user support email and
+   developer contact email. That is all of it.
+
+   Leave **App domain** (home page, privacy policy, terms of service) and
+   **Authorized domains** empty. Authorized domains exists to constrain domains
+   you actually reference — the App domain URLs above, and the redirect URIs of
+   a *Web application* client. A Desktop client redirects to loopback, so there
+   is no domain to register and nothing to verify in Search Console.
+
+   Those fields become mandatory only when you submit for **verification**,
+   which also requires the home page and privacy policy to live on a domain you
+   own. That is a road worth not starting down: this shop has no domain, and
+   `onrender.com` belongs to Render, so it can never be verified here.
+
+   Branding edits save as a draft. There is a separate **Publish branding**
+   button, distinct from publishing the app in step 4.
 3. **Google Auth Platform → Data Access** → Add or remove scopes → add
    `https://www.googleapis.com/auth/gmail.send`. Scopes moved here; they are no
    longer on the consent screen page.
