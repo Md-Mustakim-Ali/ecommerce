@@ -40,14 +40,36 @@ Copy the **pooled** connection string for each — the one with `-pooler` in the
 host. [lib/db/index.ts](../lib/db/index.ts) sets `prepare: false` on serverless
 precisely because that endpoint runs in transaction mode.
 
-Run the storefront's migrations once, from your machine:
+Migrations run **from the build**. `render.yaml`'s build command ends with
+`pnpm db:migrate`, after `pnpm build`, so a compile error stops the deploy
+before the database is touched and a failed migration fails the deploy with the
+old instance still serving.
+
+This reverses the earlier instruction here, which said to run them by hand and
+never from the build, on the grounds that overlapping redeploys could race
+`drizzle-kit migrate` and half-apply a schema. Two things changed that call.
+
+The race does not half-apply anything. Postgres DDL is transactional and
+drizzle applies each migration file inside one transaction, so two builders
+arriving together produce one winner and one deploy that fails loudly on
+`already exists` — visible and retryable, not silent corruption.
+
+The manual step, meanwhile, failed in practice. In September 2026 four
+branches merged and shipped while the production database sat two migrations
+behind, because "run it yourself" is a step with nothing to enforce it. A
+deploy that migrates itself cannot drift; a human who has to remember can.
+
+What this does demand is that migrations stay **backward compatible**. A deploy
+can migrate and then fail its health check and roll back, leaving the new
+schema under the old code. Add columns, backfill, and only drop or rename in a
+later release once nothing reads them.
+
+To run one by hand anyway — against a database that is not the one Render
+deploys to, or to check a migration before shipping it:
 
 ```bash
-pnpm db:migrate
+DATABASE_URL="postgresql://…" pnpm db:migrate
 ```
-
-Not from the build. Render redeploys can overlap, and two builders racing
-`drizzle-kit migrate` against one database is how you get a half-applied schema.
 
 ## 2. Images — Cloudflare R2
 
@@ -101,7 +123,56 @@ Then mint an API key in the Jomma dashboard for the storefront.
 | `JOMMA_WEBHOOK_SECRET` | The `whsec_…` shown when you create the webhook endpoint (step 5) |
 | `R2_*` | The five from step 2 |
 
-`BETTER_AUTH_SECRET` is generated for you.
+`BETTER_AUTH_SECRET` and `MEDIA_SWEEP_SECRET` are generated for you.
+
+These four are optional — the app boots without them and simply does less:
+
+| Variable | Without it |
+|---|---|
+| `RESEND_API_KEY`, `EMAIL_FROM` | No receipts, no verification mail, and guest orders never attach to an account |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | No seller can connect Google Drive or YouTube |
+| `SENTRY_DSN` | No error tracking |
+
+`GOOGLE_TOKEN_ENCRYPTION_KEY` must be base64 that decodes to **exactly** 32
+bytes, which is why the blueprint marks it `sync: false` rather than letting
+Render generate it — a generated value passes the schema and then throws the
+first time a seller connects:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+**Adding these to a service that already exists needs a blueprint sync.**
+Editing `render.yaml` does not create env vars by itself: Render reads it at
+**Blueprints → your blueprint → Manual Sync**. Values already set by hand are
+not overwritten.
+
+### Email needs a domain you own
+
+`EMAIL_FROM` is the `From:` address on every receipt, verification link and
+shipment notice. Resend will only send from a domain whose DNS you have
+verified with them, and `onrender.com` is not yours — so the Render subdomain
+cannot be an email sender no matter what you put here.
+
+Without a domain there are two honest options:
+
+- **`onboarding@resend.dev`.** Resend's shared sender, no DNS needed. It only
+  delivers to the address your Resend account is registered with, so it proves
+  the wiring works and cannot reach a customer.
+- **Leave `RESEND_API_KEY` and `EMAIL_FROM` unset.** The console adapter takes
+  over and refuses to send in production, which fails loudly rather than
+  dropping receipts silently. Sign-up and sign-in still work — with email
+  unconfigured, `requireEmailVerification` stays off, so nobody is locked out.
+  What you lose is receipts and the guest-order claim, which needs a *verified*
+  contact and so never fires.
+
+A domain is a few dollars a year and is the only real fix. Verify it in Resend
+(three DNS records), then set `EMAIL_FROM` to something on it, such as
+`orders@yourdomain.com`.
+
+`EMAIL_REPLY_TO` is where a buyer's reply lands when they hit reply on a
+receipt. Optional; falls back to `EMAIL_FROM`. Point it at an inbox a human
+reads, because `orders@` usually is not one.
 
 The one that silently breaks everything is `JOMMA_WEBHOOK_SECRET`, and there
 are two different secrets it is easy to confuse:
@@ -144,6 +215,41 @@ POST https://jomma-web.onrender.com/api/internal/sweep?group=all
 Authorization: Bearer <AUTH_SECRET>
 ```
 
+## 7. The media sweep — a second cron
+
+Sellers upload product media into their *own* Google Drive and YouTube, and
+uploads finish asynchronously. `POST /api/media/sweep` is what reconciles them:
+without it, media stays stuck in `processing` and never appears on a product.
+
+Render's free plan has no cron, so this needs an external poker exactly like
+Jomma's. On cron-job.org:
+
+```
+POST https://ecommerce-web.onrender.com/api/media/sweep
+Authorization: Bearer <MEDIA_SWEEP_SECRET from Render>
+```
+
+The secret is generated by the blueprint; copy it out of the Render dashboard.
+A missing `MEDIA_SWEEP_SECRET` **closes** the endpoint rather than opening it —
+a forgotten variable must never be what makes a route public, and this one
+makes Google API calls for every store, so an open one is a free way to burn a
+seller's daily quota.
+
+Skip this only if no seller has connected Google yet.
+
+## 8. Google OAuth — the redirect URI
+
+Each seller connects their own Google Cloud project, and every one of those
+projects must list this app's callback as an authorised redirect URI. It is
+built from `BETTER_AUTH_URL`:
+
+```
+https://ecommerce-web.onrender.com/api/google/callback
+```
+
+A localhost URI left over from development fails at the moment a seller clicks
+connect, with Google's own error page rather than anything this app can catch.
+
 ## The dial
 
 Three free limits are in tension, and the sweep interval is what moves between
@@ -171,13 +277,21 @@ redelivery is a no-op.
 ## Before going live
 
 - [ ] Storefront's Neon project is **Postgres 18**, using the **pooled** string
-- [ ] `pnpm db:migrate` run once against it
+- [ ] The build's `pnpm db:migrate` step succeeded — check the deploy log, not
+      the absence of errors on the site; additive migrations are invisible until
+      the code that needs them runs
+- [ ] Blueprint synced, so the env vars added since the service was created
+      actually exist on it
 - [ ] Images migrated to R2 and a product page renders photos
 - [ ] `BETTER_AUTH_URL` matches the deployed origin exactly
 - [ ] `JOMMA_WEBHOOK_SECRET` === the webhook **endpoint's** `whsec_…`, not the
       `WEBHOOK_SIGNING_SECRET` environment variable
 - [ ] Storefront hostname registered under Apps → Hosted checkout
 - [ ] The sweep cron is running and authenticated
+- [ ] The **media** sweep cron is running too, if any seller uses Google
+- [ ] Google callback URI registered in each seller's Cloud project
+- [ ] `EMAIL_FROM` is on a domain verified with Resend — or email is
+      deliberately left unconfigured and you know receipts do not send
 - [ ] A real bKash payment flips an order to paid
 - [ ] Shipping settings revisited for BDT — the seeded values are dollar-era
       figures reinterpreted as taka (see [jomma.md](jomma.md))

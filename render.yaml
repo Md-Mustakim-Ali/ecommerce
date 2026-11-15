@@ -20,7 +20,19 @@ services:
     branch: main
     # corepack, because package.json pins a pnpm version and Render's image
     # ships a different one.
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    #
+    # Migrations run here, after the build, and the order is deliberate. Before
+    # it, a compile error would leave the database ahead of code that never
+    # shipped; after it, a failed migration fails the deploy and the old
+    # instance keeps serving. drizzle-kit is a devDependency and so is
+    # typescript, which `next build` already needs — if devDependencies were
+    # ever skipped the build would fail first, so this adds no new way to break.
+    #
+    # The consequence is that a migration can land for a deploy that later
+    # fails its health check and rolls back. Keep them backward compatible —
+    # add columns, do not rename or drop them in the same release as the code
+    # that stops using them — so the previous version can serve the new schema.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm db:migrate
     startCommand: pnpm start
     # Cheap, always-public, and does not touch the database — a health check
     # that queries Postgres would wake Neon on every probe and burn the free
