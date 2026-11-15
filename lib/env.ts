@@ -13,11 +13,42 @@ const envSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
 
+  // -- Gmail, the default sender ---------------------------------------------
+  //
+  // All three or none. Preferred over Resend here for one reason: Resend only
+  // sends from a domain whose DNS you have verified, and a Render subdomain is
+  // not yours. Gmail sends as the account that consented, so it needs no
+  // domain at all. It is also an HTTP API rather than SMTP, which matters
+  // because Render blocks outbound SMTP.
+  //
+  // GMAIL_REFRESH_TOKEN comes from a one-time consent:
+  //   pnpm tsx scripts/gmail-authorise.mts
+  //
+  // Publish the Cloud project's OAuth consent screen before doing that. While
+  // it is in "Testing" Google expires refresh tokens after seven days, and
+  // email stops working a week later with nothing in the logs until something
+  // tries to send.
+  GMAIL_CLIENT_ID: z.string().min(1).optional(),
+  GMAIL_CLIENT_SECRET: z.string().min(1).optional(),
+  GMAIL_REFRESH_TOKEN: z.string().min(1).optional(),
+
   // Optional, because the console adapter covers development and a required
   // key here would mean nobody can run the app without a Resend account.
   // lib/email/index.ts refuses to fall back to the console in production.
+  //
+  // The better answer once a real domain exists — bounce handling, higher
+  // limits, and it does not tie the shop's mail to one person's Google account.
   RESEND_API_KEY: z.string().min(1).optional(),
-  /** Must be on a domain verified with the provider, or everything bounces. */
+  /**
+   * The sender address, and what it has to be depends on the provider.
+   *
+   * On Gmail: the address that granted consent. Gmail rewrites `From:` to
+   * match the authorised account anyway, so a different value here is ignored
+   * rather than honoured.
+   *
+   * On Resend: an address on a domain verified with them, or everything
+   * bounces.
+   */
   EMAIL_FROM: z.string().min(3).optional(),
   /** Where a buyer's reply goes. Falls back to EMAIL_FROM. */
   EMAIL_REPLY_TO: z.string().min(3).optional(),

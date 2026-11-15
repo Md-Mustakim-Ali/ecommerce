@@ -129,7 +129,7 @@ These four are optional — the app boots without them and simply does less:
 
 | Variable | Without it |
 |---|---|
-| `RESEND_API_KEY`, `EMAIL_FROM` | No receipts, no verification mail, and guest orders never attach to an account |
+| `GMAIL_*` (or `RESEND_API_KEY`) + `EMAIL_FROM` | No receipts, no verification mail, and guest orders never attach to an account |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | No seller can connect Google Drive or YouTube |
 | `SENTRY_DSN` | No error tracking |
 
@@ -147,32 +147,71 @@ Editing `render.yaml` does not create env vars by itself: Render reads it at
 **Blueprints → your blueprint → Manual Sync**. Values already set by hand are
 not overwritten.
 
-### Email needs a domain you own
+### Email — Gmail, because there is no domain yet
 
 `EMAIL_FROM` is the `From:` address on every receipt, verification link and
-shipment notice. Resend will only send from a domain whose DNS you have
-verified with them, and `onrender.com` is not yours — so the Render subdomain
-cannot be an email sender no matter what you put here.
+shipment notice. `EMAIL_REPLY_TO` is where a buyer's reply lands; optional,
+falls back to `EMAIL_FROM`. Point it at an inbox a person reads, because
+`orders@` usually is not one.
 
-Without a domain there are two honest options:
+There are two providers, and [lib/email/index.ts](../lib/email/index.ts)
+prefers **Gmail** when it is configured. Set either the three `GMAIL_*` or the
+Resend pair — never both is required, and `EMAIL_FROM` is needed either way.
 
-- **`onboarding@resend.dev`.** Resend's shared sender, no DNS needed. It only
-  delivers to the address your Resend account is registered with, so it proves
-  the wiring works and cannot reach a customer.
-- **Leave `RESEND_API_KEY` and `EMAIL_FROM` unset.** The console adapter takes
-  over and refuses to send in production, which fails loudly rather than
-  dropping receipts silently. Sign-up and sign-in still work — with email
-  unconfigured, `requireEmailVerification` stays off, so nobody is locked out.
-  What you lose is receipts and the guest-order claim, which needs a *verified*
-  contact and so never fires.
+Gmail leads for one reason, and it is situational rather than technical:
+Resend only sends from a domain whose DNS you have verified, and `onrender.com`
+belongs to Render. Gmail sends as the account that granted consent, so a plain
+`@gmail.com` address works with no DNS at all.
 
-A domain is a few dollars a year and is the only real fix. Verify it in Resend
-(three DNS records), then set `EMAIL_FROM` to something on it, such as
-`orders@yourdomain.com`.
+Neither is SMTP, deliberately. **Render blocks outbound SMTP**, so any provider
+reached on port 465 or 587 is unusable there — both adapters are HTTPS APIs.
 
-`EMAIL_REPLY_TO` is where a buyer's reply lands when they hit reply on a
-receipt. Optional; falls back to `EMAIL_FROM`. Point it at an inbox a human
-reads, because `orders@` usually is not one.
+#### Setting Gmail up
+
+In [console.cloud.google.com](https://console.cloud.google.com), on any
+project:
+
+1. Enable the **Gmail API**.
+2. **OAuth consent screen** → add yourself as a test user → then **publish it**.
+   Do not skip publishing. While the screen is in "Testing", Google expires
+   refresh tokens after **seven days**: mail works for a week, then stops, and
+   nothing surfaces until something tries to send.
+3. **Credentials → Create OAuth client ID → Desktop app.** Desktop clients may
+   use the loopback redirect the script listens on; a Web client would need the
+   URI registered.
+
+Then, locally:
+
+```bash
+GMAIL_CLIENT_ID="…apps.googleusercontent.com" \
+GMAIL_CLIENT_SECRET="…" \
+pnpm tsx scripts/gmail-authorise.mts
+```
+
+It opens a consent URL, catches the redirect on localhost, and prints the three
+values to put in Render. `EMAIL_FROM` is the address you approved — Gmail
+rewrites `From:` to match the authorised account, so a different value is
+ignored rather than honoured.
+
+The limits are real but generous for a young shop: **500 recipients a day** on
+a free Gmail account, 2,000 on Workspace. Deliverability to non-Gmail inboxes is
+adequate, not excellent.
+
+#### Or no email at all
+
+Leaving every provider unset is a legitimate way to launch. The console adapter
+takes over and refuses to send in production, which fails loudly rather than
+dropping receipts silently. Sign-up and sign-in still work — with email
+unconfigured `requireEmailVerification` stays off, so nobody is locked out.
+What you lose is receipts, password reset, and the guest-order claim, which
+needs a *verified* contact and so never fires.
+
+#### When you do get a domain
+
+Verify it with Resend (three DNS records), set `RESEND_API_KEY` and an
+`EMAIL_FROM` on that domain, and clear the three `GMAIL_*`. Resend has bounce
+handling, far higher limits, and does not tie the shop's mail to one person's
+Google account.
 
 The one that silently breaks everything is `JOMMA_WEBHOOK_SECRET`, and there
 are two different secrets it is easy to confuse:
@@ -290,8 +329,9 @@ redelivery is a no-op.
 - [ ] The sweep cron is running and authenticated
 - [ ] The **media** sweep cron is running too, if any seller uses Google
 - [ ] Google callback URI registered in each seller's Cloud project
-- [ ] `EMAIL_FROM` is on a domain verified with Resend — or email is
-      deliberately left unconfigured and you know receipts do not send
+- [ ] Email sends: the Gmail consent screen is **published** (not Testing, or
+      it dies in seven days), or `EMAIL_FROM` is on a Resend-verified domain —
+      or email is deliberately unconfigured and you know receipts do not send
 - [ ] A real bKash payment flips an order to paid
 - [ ] Shipping settings revisited for BDT — the seeded values are dollar-era
       figures reinterpreted as taka (see [jomma.md](jomma.md))

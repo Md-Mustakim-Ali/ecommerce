@@ -63,8 +63,30 @@ services:
         sync: false
 
       # ── Transactional email ──────────────────────────────────────────────
-      # Both or neither. Without them the console adapter takes over and
-      # refuses to send in production, so no receipts and no verification mail.
+      # Two providers; lib/email/index.ts prefers Gmail when it is configured.
+      # Set EITHER the three GMAIL_* or the Resend pair. EMAIL_FROM is needed
+      # by both.
+      #
+      # Gmail is the default because Resend will only send from a domain whose
+      # DNS you have verified, and onrender.com is not yours. Gmail sends as
+      # the account that consented, so it needs no domain. Both are HTTP APIs:
+      # there is no SMTP adapter because Render blocks outbound SMTP.
+      #
+      # GMAIL_REFRESH_TOKEN comes from a one-time local consent, since Google
+      # will not issue one non-interactively:
+      #   pnpm tsx scripts/gmail-authorise.mts
+      #
+      # Publish the Cloud project's OAuth consent screen first, or Google
+      # expires the refresh token after seven days and mail stops.
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+
+      # Without any provider the console adapter takes over and refuses to send
+      # in production, so no receipts and no verification mail.
       #
       # Filling these in also flips `requireEmailVerification` on, because it
       # follows whether email is configured. Existing accounts with
@@ -74,7 +96,9 @@ services:
       # until these exist that path never fires.
       - key: RESEND_API_KEY
         sync: false
-      # Must be on a domain verified with Resend, or everything bounces.
+      # On Gmail, the address that granted consent — Gmail rewrites From: to
+      # match it, so anything else is ignored rather than honoured. On Resend,
+      # an address on a domain verified with them or everything bounces.
       - key: EMAIL_FROM
         sync: false
       - key: EMAIL_REPLY_TO
