@@ -22,7 +22,7 @@ import {
   reorderProductImagesAction,
 } from "@/lib/actions/product-images";
 import {
-  attachVideoLinkAction,
+  attachMediaLinkAction,
   uploadProductImageToDriveAction,
 } from "@/lib/actions/product-media";
 import type { EditorAttribute } from "@/lib/catalog/product-editor";
@@ -143,7 +143,7 @@ export function MediaManager({
     setMessage(null);
 
     startTransition(async () => {
-      const result = await attachVideoLinkAction({
+      const result = await attachMediaLinkAction({
         storeId,
         productId,
         url: trimmed,
@@ -253,7 +253,7 @@ export function MediaManager({
       {canEdit ? (
         <div className="flex flex-col gap-2 rounded-md bg-surface-2 p-3">
           <Label htmlFor="gallery-video-url" className="text-xs">
-            Or paste a YouTube link
+            Or paste a link
           </Label>
           <div className="flex gap-2">
             <Input
@@ -266,7 +266,7 @@ export function MediaManager({
                   attachVideo();
                 }
               }}
-              placeholder="https://youtu.be/…"
+              placeholder="YouTube link or image address"
               disabled={pending}
             />
             <Button
@@ -279,9 +279,10 @@ export function MediaManager({
             </Button>
           </div>
           <p className="text-tertiary-text text-xs">
-            Linking a video you have already uploaded costs 1 of your
-            project&rsquo;s daily quota units. Uploading through the app costs
-            1,600 — about a sixth of a day.
+            A YouTube link costs 1 of your project&rsquo;s daily quota units;
+            uploading a video through the app costs 1,600, about a sixth of a
+            day. An image address is copied into your Drive rather than linked,
+            so it cannot break later.
           </p>
         </div>
       ) : null}

@@ -22,7 +22,7 @@ import {
   updateProductDetailsAction,
 } from "@/lib/actions/product-editor";
 import {
-  attachVideoLinkAction,
+  attachMediaLinkAction,
   setPublishModeAction,
   uploadProductImageToDriveAction,
 } from "@/lib/actions/product-media";
@@ -455,6 +455,8 @@ function DetailsSection({
           value={doc}
           onChange={setDoc}
           media={media}
+          storeId={storeId}
+          productId={product.id}
           disabled={pending}
           onUploadImage={async (file) => {
             const form = new FormData();
@@ -465,7 +467,7 @@ function DetailsSection({
             return uploadProductImageToDriveAction(form);
           }}
           onAttachVideo={async (url) =>
-            attachVideoLinkAction({
+            attachMediaLinkAction({
               storeId,
               productId: product.id,
               url,

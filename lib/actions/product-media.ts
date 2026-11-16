@@ -15,6 +15,14 @@ import {
   parseVideoId,
 } from "@/lib/media/google/youtube";
 import {
+  checkRemoteImageResponse,
+  checkRemoteUrl,
+  filenameFromUrl,
+  isBlockedAddress,
+  MAX_REMOTE_BYTES,
+  REMOTE_IMAGE_TYPES,
+} from "@/lib/media/remote-url";
+import {
   databaseFailoverSink,
   loadGrantCandidates,
   loadGrantCredentials,
@@ -334,6 +342,190 @@ export async function attachVideoLinkAction(
       ? "Video added."
       : "Video added. It is still processing on YouTube and will appear when ready.",
   };
+}
+
+// ── Anything with a URL ───────────────────────────────────────────────────
+
+/**
+ * Every address the hostname resolves to must be public.
+ *
+ * checkRemoteUrl catches a literal `127.0.0.1`, but nothing stops a seller
+ * pointing `pictures.example.com` at it — DNS is theirs to control, not ours.
+ * The addresses are what the fetch will actually reach, so the addresses are
+ * what get checked.
+ */
+async function resolvesPublicly(hostname: string): Promise<boolean> {
+  // Already a literal address: checkRemoteUrl has judged it.
+  if (isBlockedAddress(hostname)) return false;
+  if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) return true;
+
+  try {
+    const { lookup } = await import("node:dns/promises");
+    const results = await lookup(hostname, { all: true });
+    if (results.length === 0) return false;
+    return results.every((entry) => !isBlockedAddress(entry.address));
+  } catch {
+    // A hostname that will not resolve here will not fetch either.
+    return false;
+  }
+}
+
+/**
+ * Downloads an image a seller linked to, into their own Drive.
+ *
+ * Ingested rather than hotlinked, for three reasons. next.config.ts keeps a
+ * deliberately short allowlist of image hosts and adding "anywhere" to it
+ * would make the storefront an open image proxy. A linked image can change or
+ * disappear under a live listing with nothing to detect it. And a copy in the
+ * seller's Drive is subject to the same readiness gate, sweeper and
+ * delete-by-owning-account as everything else.
+ */
+async function ingestRemoteImage(
+  url: URL,
+): Promise<
+  | { ok: true; bytes: Uint8Array; contentType: string }
+  | { ok: false; message: string }
+> {
+  if (!(await resolvesPublicly(url.hostname))) {
+    return {
+      ok: false,
+      message: "That address is not reachable from the internet.",
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      // manual, so a 302 to 169.254.169.254 is not followed by the runtime
+      // behind our back. One hop is all that is offered.
+      redirect: "manual",
+      headers: { accept: REMOTE_IMAGE_TYPES.join(",") },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return { ok: false, message: "Could not reach that link." };
+  }
+
+  if (response.status >= 300 && response.status < 400) {
+    return {
+      ok: false,
+      message: "That link redirects. Use the direct image address.",
+    };
+  }
+  if (!response.ok) {
+    return { ok: false, message: `That link returned ${response.status}.` };
+  }
+
+  const check = checkRemoteImageResponse(response.headers);
+  if (!check.ok) return { ok: false, message: check.message };
+
+  const buffer = await response.arrayBuffer();
+  // Checked again after reading: Content-Length is advisory and a hostile
+  // server can simply omit it.
+  if (buffer.byteLength > MAX_REMOTE_BYTES) {
+    return {
+      ok: false,
+      message: `That image is ${(buffer.byteLength / 1024 / 1024).toFixed(1)} MB. The limit is ${MAX_REMOTE_BYTES / 1024 / 1024} MB.`,
+    };
+  }
+
+  return {
+    ok: true,
+    bytes: new Uint8Array(buffer),
+    contentType: check.contentType,
+  };
+}
+
+/**
+ * One field for any link a seller pastes.
+ *
+ * A YouTube URL becomes a video on their channel; anything else is tried as an
+ * image and copied into their Drive. Asking which kind it was first would be a
+ * question the address already answers.
+ */
+export async function attachMediaLinkAction(
+  input: z.input<typeof linkInput>,
+): Promise<MediaResult> {
+  const parsed = linkInput.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Invalid request." };
+  const data = parsed.data;
+
+  // YouTube first: it is the cheap path and the unambiguous one.
+  if (parseVideoId(data.url)) {
+    return attachVideoLinkAction(data);
+  }
+
+  await requireStorePermission(data.storeId, "product.update");
+  const owned = await ownedProduct(data.productId, data.storeId);
+  if (!owned) return { ok: false, message: "Product not found." };
+
+  const checked = checkRemoteUrl(data.url);
+  if (!checked.ok) return { ok: false, message: checked.message };
+
+  const position = await nextPosition(data.productId);
+  if (position >= MAX_MEDIA_PER_PRODUCT) {
+    return {
+      ok: false,
+      message: `A product can have ${MAX_MEDIA_PER_PRODUCT} pieces of media. Remove one first.`,
+    };
+  }
+
+  const fetched = await ingestRemoteImage(checked.url);
+  if (!fetched.ok) return { ok: false, message: fetched.message };
+
+  const candidates = await loadGrantCandidates(data.storeId);
+  const result = await runWithFailover({
+    candidates,
+    need: { kind: "drive", bytes: fetched.bytes.byteLength },
+    now: new Date(),
+    sink: databaseFailoverSink(),
+    attempt: async (grant) => {
+      const credentials = await loadGrantCredentials(grant.grantId);
+      if (!credentials) {
+        throw new GoogleApiError({
+          status: 401,
+          reason: "invalid_grant",
+          message: "That connection is missing its credentials.",
+        });
+      }
+      const token = await accessTokenForGrant(grant.grantId, credentials);
+      const folderId = await ensureStoreFolder(token, owned.storeName);
+      const uploaded = await uploadFile({
+        accessToken: token,
+        filename: filenameFromUrl(checked.url, fetched.contentType),
+        contentType: fetched.contentType,
+        bytes: fetched.bytes,
+        parentId: folderId,
+      });
+      return { fileId: uploaded.fileId, accountId: grant.accountId };
+    },
+  });
+
+  if (!result.ok) return { ok: false, message: explainFailure(result) };
+
+  const [row] = await db
+    .insert(productImages)
+    .values({
+      productId: data.productId,
+      kind: "image",
+      provider: "drive",
+      placement: data.placement,
+      providerRef: result.value.fileId,
+      googleAccountId: result.value.accountId,
+      state: "queued",
+      alt: data.alt ?? null,
+      position,
+    })
+    .returning({ id: productImages.id });
+
+  await db
+    .update(productImages)
+    .set({ url: `/api/media/${row.id}`, state: "ready" })
+    .where(eq(productImages.id, row.id));
+
+  revalidatePath(`/dashboard/${data.storeId}/products/${data.productId}`);
+  revalidatePath(`/p/${owned.slug}`);
+  return { ok: true, mediaId: row.id, message: "Image added." };
 }
 
 // ── Video by upload ───────────────────────────────────────────────────────
