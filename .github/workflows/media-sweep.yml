@@ -1,0 +1,116 @@
+# Pokes POST /api/media/sweep on a schedule.
+#
+# The sweep is what advances media Google is still working on — a Drive file
+# that is not servable yet, a YouTube video still transcoding — and publishes
+# the products that were blocked waiting for it. Google never calls back, so
+# without something asking, a video sits on "processing" forever and an
+# auto-publish product never goes live.
+#
+# A GitHub Action rather than a Render cron job, because Render's cron is a
+# paid service type and this repo already gets 2,000 free Actions minutes a
+# month. Hourly costs ~730 of them, since a run bills as a whole minute.
+#
+# HOURLY, and that is a budget decision rather than a guess. Render free
+# instances sleep after 15 minutes idle, and this request wakes one — so the
+# ping interval is really an uptime dial spending the workspace's 750 free
+# instance-hours, which ecommerce-web shares with jomma-web. Hourly keeps this
+# service awake roughly a quarter of the month. Every 10 minutes would keep it
+# awake permanently and spend the entire shared budget here.
+#
+# Two things to know before relying on this. GitHub delays scheduled workflows
+# under load, often by 10-30 minutes and occasionally dropping a run outright,
+# so treat the cadence as "about hourly" and never as a deadline. And GitHub
+# disables scheduled workflows in a repository with 60 days of no commits —
+# if sweeps quietly stop, check that first.
+#
+# ── Setup ──────────────────────────────────────────────────────────────────
+# Settings → Secrets and variables → Actions:
+#
+#   Variables → APP_URL          https://<your-service>.onrender.com
+#                                (a variable, not a secret, so it shows in the
+#                                 logs when a run fails and you need to see
+#                                 which host was called)
+#
+#   Secrets   → MEDIA_SWEEP_SECRET   the value Render generated for the
+#                                    service's MEDIA_SWEEP_SECRET env var
+#
+# Mismatch the secret and every run fails with 401, which is the intended
+# behaviour: the endpoint refuses rather than running unauthenticated.
+
+name: Media sweep
+
+on:
+  schedule:
+    - cron: "0 * * * *" # hourly, UTC
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Rows to advance in one pass (1-100)"
+        required: false
+        default: "50"
+
+# No repository access needed — this only makes an outbound HTTPS request.
+permissions: {}
+
+# A delayed run must not overlap the next one and double the Google API calls.
+# Queued rather than cancelled: the sweep is idempotent, so letting it finish
+# is cheaper than starting over.
+concurrency:
+  group: media-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check configuration
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          SWEEP_SECRET: ${{ secrets.MEDIA_SWEEP_SECRET }}
+        run: |
+          # Explicit ifs rather than `[ -z "$X" ] && missing=…`. That form
+          # returns non-zero when the variable IS set, and under the default
+          # `bash -e` it fails the step the moment it becomes the last line.
+          missing=""
+          if [ -z "$APP_URL" ]; then
+            missing="$missing APP_URL(variable)"
+          fi
+          if [ -z "$SWEEP_SECRET" ]; then
+            missing="$missing MEDIA_SWEEP_SECRET(secret)"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::error::Not configured. Missing:$missing — see the header of this workflow file."
+            exit 1
+          fi
+          echo "Target: $APP_URL"
+
+      # Separated from the sweep so a sleeping service and a failing sweep are
+      # distinguishable in the log. A free instance takes 30-60s to wake, and
+      # the health check is the cheapest thing to wake it with — it serves a
+      # page and touches no database.
+      - name: Wake the instance
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          curl --silent --show-error --location \
+               --connect-timeout 30 --max-time 180 \
+               --retry 3 --retry-delay 10 --retry-connrefused \
+               --output /dev/null --write-out 'woke in %{time_total}s (HTTP %{http_code})\n' \
+               "$APP_URL/"
+
+      - name: Sweep
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          SWEEP_SECRET: ${{ secrets.MEDIA_SWEEP_SECRET }}
+          LIMIT: ${{ inputs.limit || '50' }}
+        run: |
+          # --fail-with-body so a 401 or 500 both fails the job AND prints what
+          # the server said. Plain --fail throws the body away, which is the
+          # half that tells you why.
+          curl --silent --show-error --fail-with-body \
+               --connect-timeout 30 --max-time 300 \
+               --request POST \
+               --header "Authorization: Bearer $SWEEP_SECRET" \
+               --write-out '\nHTTP %{http_code} in %{time_total}s\n' \
+               "$APP_URL/api/media/sweep?limit=$LIMIT"
