@@ -19,29 +19,64 @@ const PAID = new Date("2026-09-10T05:43:00.000Z");
 
 describe("formatDateTime", () => {
   it("renders an instant in the shop's zone, not the runtime's", () => {
-    expect(formatDateTime(PAID)).toMatch(/^10 Sep\w* 2026, 11:43$/);
+    expect(formatDateTime(PAID)).toMatch(/^10 Sep\w* 2026, 11:43\u00a0AM$/);
   });
 
   /**
    * The case that makes this a correctness bug rather than a cosmetic one.
    * 00:30 Dhaka is 18:30 UTC the day BEFORE, so a UTC render moved the date
    * backwards for every order placed after six in the evening.
+   *
+   * It doubles as the midnight check for the 12-hour clock, where the hour
+   * after midnight is 12 AM and not 0 AM.
    */
   it("keeps the date on the right side of midnight", () => {
     // 00:30 on 11 September in Dhaka.
     expect(formatDateTime(new Date("2026-09-10T18:30:00.000Z"))).toMatch(
-      /^11 Sep\w* 2026, 00:30$/,
+      /^11 Sep\w* 2026, 12:30\u00a0AM$/,
     );
     // 23:59 on 10 September in Dhaka.
     expect(formatDateTime(new Date("2026-09-10T17:59:00.000Z"))).toMatch(
-      /^10 Sep\w* 2026, 23:59$/,
+      /^10 Sep\w* 2026, 11:59\u00a0PM$/,
     );
   });
 
-  it("uses a 24-hour clock", () => {
+  it("reads the clock the way Bangladesh does: 12-hour, uppercase AM/PM", () => {
+    // 17:00 Dhaka.
     expect(formatDateTime(new Date("2026-09-10T11:00:00.000Z"))).toMatch(
-      /17:00$/,
+      /\b5:00\u00a0PM$/,
     );
+    // Never a lowercase meridiem — en-GB's default, which this overrides.
+    expect(formatDateTime(PAID)).not.toMatch(/\b(am|pm)\b/);
+  });
+
+  /** Noon is the other end of the trap midnight sets: 12 PM, not 0 PM. */
+  it("gets noon right", () => {
+    expect(formatDateTime(new Date("2026-09-10T06:00:00.000Z"))).toMatch(
+      /12:00\u00a0PM$/,
+    );
+  });
+
+  /** A single-digit hour is not padded — nobody writes `05:43 PM`. */
+  it("does not zero-pad the hour", () => {
+    expect(formatDateTime(new Date("2026-09-10T11:00:00.000Z"))).not.toMatch(
+      /05:00/,
+    );
+  });
+
+  /**
+   * ICU puts U+202F NARROW NO-BREAK SPACE before the meridiem. Plenty of fonts
+   * have no glyph for it, so it renders as a missing-character box or nothing
+   * at all, and no keyboard types it — which makes every later comparison
+   * against a formatted string a quiet trap. U+00A0 keeps the one property
+   * that matters, that `11:43` and `AM` never split across a line.
+   */
+  it("uses a no-break space the fonts actually have", () => {
+    const formatted = formatDateTime(PAID);
+    expect(formatted).not.toContain("\u202f");
+    expect(formatted).toContain("\u00a0");
+    // And not a plain space, which would let the meridiem wrap onto its own line.
+    expect(formatted).not.toMatch(/\d AM/);
   });
 });
 
@@ -75,7 +110,7 @@ describe("missing and malformed values", () => {
    */
   it("accepts the ISO string a serialised date becomes", () => {
     expect(formatDateTime(PAID.toISOString())).toMatch(
-      /^10 Sep\w* 2026, 11:43$/,
+      /^10 Sep\w* 2026, 11:43\u00a0AM$/,
     );
     expect(formatDate(PAID.getTime())).toMatch(/^10 Sep\w* 2026$/);
   });

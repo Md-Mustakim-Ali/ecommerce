@@ -35,8 +35,16 @@
  * A named month, not a numeric one. `10 Sep 2026` cannot be misread; both
  * `10/09/2026` and `09/10/2026` can, and this shop has readers who use each.
  *
- * 24-hour time, which is what a `৳242.00 at 17:43` receipt should say rather
- * than leaving AM/PM to carry the meaning.
+ * 12-hour time with AM/PM, because that is how Bangladesh reads a clock. This
+ * started as 24-hour on the reasoning that a receipt should not lean on AM/PM
+ * to carry its meaning, which was a preference dressed up as an argument — the
+ * market writes `11:43 AM`, so the shop writes `11:43 AM`.
+ *
+ * Uppercase, and that takes a little work. en-GB gives the day-first order
+ * Bangladesh uses but renders a lowercase `am`; en-US and en-BD both give the
+ * uppercase form and put the month first, which is the wrong way round here.
+ * So the parts are assembled by hand: en-GB's ordering, with the day period
+ * upcased.
  */
 
 /**
@@ -70,16 +78,53 @@ const DATE_LONG = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-/** `10 Sep 2026, 11:43` */
+/**
+ * `10 Sep 2026, 11:43 AM`
+ *
+ * `hour: "numeric"`, not `"2-digit"`. On a 12-hour clock the padded form reads
+ * `05:43 PM`, which nobody writes.
+ */
 const DATE_TIME = new Intl.DateTimeFormat("en-GB", {
   timeZone: SHOP_TIME_ZONE,
   day: "numeric",
   month: "short",
   year: "numeric",
-  hour: "2-digit",
+  hour: "numeric",
   minute: "2-digit",
-  hourCycle: "h23",
+  hour12: true,
 });
+
+/**
+ * A regular no-break space, replacing the narrow one ICU emits.
+ *
+ * Current ICU separates the time from the meridiem with U+202F NARROW NO-BREAK
+ * SPACE. It is the typographically correct character and it is a nuisance:
+ * plenty of fonts have no glyph for it, so it lands as a missing-character box
+ * or silently nothing, and any code comparing or searching the formatted string
+ * has to know to type a character no keyboard produces.
+ *
+ * U+00A0 keeps the property that actually matters — `11:43` and `AM` never end
+ * up on separate lines — with support everywhere.
+ */
+const NARROW_NO_BREAK = /\u202f/g;
+
+/**
+ * en-GB's ordering with an upcased meridiem.
+ *
+ * Done through `formatToParts` rather than a regex over the finished string,
+ * so it upcases the day period and nothing else. A blunt `.toUpperCase()` on
+ * the whole thing would shout the month too, and a regex for `/am|pm/` risks
+ * matching inside whatever a future locale or month abbreviation contains.
+ */
+function withUpperMeridiem(formatter: Intl.DateTimeFormat, date: Date): string {
+  return formatter
+    .formatToParts(date)
+    .map((part) =>
+      part.type === "dayPeriod" ? part.value.toUpperCase() : part.value,
+    )
+    .join("")
+    .replace(NARROW_NO_BREAK, "\u00a0");
+}
 
 /**
  * Accepts what the callers actually hold.
@@ -105,11 +150,11 @@ export function formatDate(value: When | null | undefined): string {
   return date ? DATE.format(date) : "—";
 }
 
-/** `10 Sep 2026, 11:43`, or `—`. */
+/** `10 Sep 2026, 11:43 AM`, or `—`. */
 export function formatDateTime(value: When | null | undefined): string {
   if (value === null || value === undefined) return "—";
   const date = toDate(value);
-  return date ? DATE_TIME.format(date) : "—";
+  return date ? withUpperMeridiem(DATE_TIME, date) : "—";
 }
 
 /** `10 September 2026`, or `—`. For invoices and other documents. */
