@@ -85,3 +85,31 @@ export function contactsFromSession(session: {
     phone: session.user.phoneNumber ?? null,
   };
 }
+
+/**
+ * The claimant behind a request that may not have a session at all.
+ *
+ * The order page and the invoice already worked this out for themselves; the
+ * two server actions did not, and both opened with "no session, no answer".
+ * That is wrong now that guests can pay: a guest's own order page authorises
+ * them by token, renders the waiting card, and then the poll behind that card
+ * refused them — so a guest who really had paid watched "Please sign in" while
+ * the money sat applied against their order.
+ *
+ * A token is the only credential a guest has. It is signed for one order id and
+ * checked against that id alone, so passing it here grants nothing wider than
+ * the page it was already good for.
+ */
+export function claimantFrom(
+  session: Parameters<typeof contactsFromSession>[0] | null | undefined,
+  accessToken?: string | null,
+): {
+  userId?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  accessToken?: string | null;
+} {
+  return session
+    ? { ...contactsFromSession(session), accessToken }
+    : { accessToken };
+}

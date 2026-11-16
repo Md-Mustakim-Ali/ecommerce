@@ -24,14 +24,17 @@ export default async function OrderPage({
   const [{ orderId }, query] = await Promise.all([params, searchParams]);
   const session = await getSession();
 
+  // A guest arrives with no session and nothing this page could ask them for,
+  // so the receipt link and the redirect out of checkout carry a token signed
+  // for this order. Without it, guest checkout has no confirmation page at all.
+  // It is also handed to the two client components below, whose server actions
+  // are a second request and so start again with no session of their own.
+  const accessToken = typeof query.t === "string" ? query.t : undefined;
+
   const order = await getOrderForBuyer({
     orderId,
     userId: session?.user.id ?? null,
-    // A guest arrives with no session and nothing this page could ask them
-    // for, so the receipt link and the redirect out of checkout carry a token
-    // signed for this order. Without it, guest checkout has no confirmation
-    // page at all.
-    accessToken: typeof query.t === "string" ? query.t : undefined,
+    accessToken,
   });
   // notFound rather than a 403: a uuid is not authorisation, and confirming
   // that an order exists but is not yours is a small leak with no upside.
@@ -66,6 +69,7 @@ export default async function OrderPage({
           orderId={order.id}
           currency={order.currency}
           initialTotalCents={order.totalCents}
+          accessToken={accessToken}
         />
       ) : null}
 
@@ -125,6 +129,7 @@ export default async function OrderPage({
         <DemoPayButton
           orderId={order.id}
           totalLabel={formatMoney(order.totalCents, order.currency)}
+          accessToken={accessToken}
         />
       ) : null}
 

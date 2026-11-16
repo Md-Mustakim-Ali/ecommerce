@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
 import { sendOrderConfirmation } from "@/lib/email/notify";
 import { recordOrderPaid } from "@/lib/money/ledger";
-import { contactsFromSession, orderBelongsTo } from "@/lib/orders/ownership";
+import { claimantFrom, orderBelongsTo } from "@/lib/orders/ownership";
 
 /**
  * Marks an order paid without any money moving.
@@ -33,6 +33,8 @@ export type DemoPaymentResult =
 
 export async function confirmDemoPaymentAction(input: {
   orderId: string;
+  /** As for the status poll: the only credential a guest testing this has. */
+  accessToken?: string;
 }): Promise<DemoPaymentResult> {
   if (process.env.NODE_ENV === "production") {
     return { ok: false, message: "Not available." };
@@ -57,9 +59,10 @@ export async function confirmDemoPaymentAction(input: {
 
   if (!order) return { ok: false, message: "Order not found." };
 
-  // Even in a demo, only the person who placed it. Otherwise any signed-in
-  // account could walk order ids and settle other people's carts.
-  if (!session || !orderBelongsTo(order, contactsFromSession(session))) {
+  // Even in a demo, only the person who placed it. Otherwise anyone could walk
+  // order ids and settle other people's carts. A guest qualifies by token,
+  // which is signed for this order alone.
+  if (!orderBelongsTo(order, claimantFrom(session, input.accessToken))) {
     return { ok: false, message: "That is not your order." };
   }
 

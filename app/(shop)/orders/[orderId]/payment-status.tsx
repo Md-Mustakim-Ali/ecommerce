@@ -40,17 +40,26 @@ export function PaymentStatus({
   currency,
   /** Rendered until the first poll answers, so the card is never empty. */
   initialTotalCents,
+  /**
+   * The `?t=` this page was opened with, handed straight back to the action.
+   *
+   * A guest has no session, so without this the poll answered "Please sign in"
+   * on the buyer's own order — under a heading promising the page would update
+   * by itself, to somebody who had already paid.
+   */
+  accessToken,
 }: {
   orderId: string;
   currency: string;
   initialTotalCents: number;
+  accessToken?: string;
 }) {
   const router = useRouter();
   const [state, setState] = useState<PaymentStatusResult | null>(null);
   const [stopped, setStopped] = useState(false);
 
   const poll = useCallback(async () => {
-    const result = await checkPaymentStatusAction({ orderId });
+    const result = await checkPaymentStatusAction({ orderId, accessToken });
     setState(result);
 
     if (!result.ok) return true;
@@ -68,7 +77,7 @@ export function PaymentStatus({
     // labelled `open` long past their deadline, and polling one of those is a
     // request that can never come back with different news.
     return result.expired;
-  }, [orderId, router]);
+  }, [orderId, accessToken, router]);
 
   useEffect(() => {
     if (stopped) return;

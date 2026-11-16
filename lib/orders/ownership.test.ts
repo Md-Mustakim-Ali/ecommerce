@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { contactsFromSession, orderBelongsTo } from "./ownership";
+import { beforeAll, describe, expect, it } from "vitest";
+import { signOrderAccess } from "./access";
+import { claimantFrom, contactsFromSession, orderBelongsTo } from "./ownership";
+
+beforeAll(() => {
+  process.env.BETTER_AUTH_SECRET = "test-secret-not-the-real-one-0123456789";
+});
 
 const guestOrder = {
   buyerId: null,
@@ -78,6 +83,61 @@ describe("orderBelongsTo", () => {
     // Canonicalisation returns null, which must not then compare equal to the
     // stored number by some accident of coercion.
     expect(orderBelongsTo(guestOrder, { phone: "0171234" })).toBe(false);
+  });
+});
+
+/**
+ * The bug this exists to stop coming back.
+ *
+ * A guest paid on Jomma, came back to their own order page, and the waiting
+ * card told them to sign in — for an account they had never created — while
+ * their money sat applied against the order. The page had authorised them by
+ * token; the server action behind the card opened with "no session, no answer"
+ * and never looked at one.
+ */
+describe("claimantFrom", () => {
+  const ORDER = "01a089d3-c8e2-7d38-a54e-a056cfde3315";
+  const order = { ...guestOrder, id: ORDER };
+
+  it("lets a guest holding this order's token through", () => {
+    expect(
+      orderBelongsTo(order, claimantFrom(null, signOrderAccess(ORDER))),
+    ).toBe(true);
+  });
+
+  it("still refuses a guest with no token at all", () => {
+    expect(orderBelongsTo(order, claimantFrom(null))).toBe(false);
+    expect(orderBelongsTo(order, claimantFrom(null, ""))).toBe(false);
+    expect(orderBelongsTo(order, claimantFrom(null, "not-a-token"))).toBe(
+      false,
+    );
+  });
+
+  it("refuses a token minted for somebody else's order", () => {
+    const other = "01a08971-667a-7ee4-8e21-a2ff569d925f";
+    expect(
+      orderBelongsTo(order, claimantFrom(null, signOrderAccess(other))),
+    ).toBe(false);
+  });
+
+  it("keeps recognising a session, with or without a token beside it", () => {
+    const session = {
+      user: { id: "user_1", email: "ada@example.com", phoneNumber: null },
+    };
+    // Matched on the order's email, since this account does not own it yet.
+    expect(orderBelongsTo(order, claimantFrom(session))).toBe(true);
+    expect(orderBelongsTo(order, claimantFrom(session, "junk"))).toBe(true);
+  });
+
+  /**
+   * A session belonging to someone else must not be widened by a bad token,
+   * and a bad token must not be rescued by an unrelated session.
+   */
+  it("does not let a wrong session and a wrong token add up to access", () => {
+    const stranger = {
+      user: { id: "user_2", email: "eve@example.com", phoneNumber: null },
+    };
+    expect(orderBelongsTo(order, claimantFrom(stranger, "junk"))).toBe(false);
   });
 });
 

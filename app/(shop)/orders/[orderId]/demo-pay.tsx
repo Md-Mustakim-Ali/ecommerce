@@ -21,9 +21,12 @@ import { confirmDemoPaymentAction } from "@/lib/actions/demo-payment";
 export function DemoPayButton({
   orderId,
   totalLabel,
+  /** As for the waiting card: what authorises a guest testing this locally. */
+  accessToken,
 }: {
   orderId: string;
   totalLabel: string;
+  accessToken?: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +62,10 @@ export function DemoPayButton({
           onClick={() => {
             setError(null);
             startTransition(async () => {
-              const result = await confirmDemoPaymentAction({ orderId });
+              const result = await confirmDemoPaymentAction({
+                orderId,
+                accessToken,
+              });
               if (!result.ok) {
                 setError(result.message);
                 return;

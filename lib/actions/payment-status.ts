@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
-import { contactsFromSession, orderBelongsTo } from "@/lib/orders/ownership";
+import { claimantFrom, orderBelongsTo } from "@/lib/orders/ownership";
 import {
   type PaymentSnapshot,
   syncOrderPayment,
@@ -32,13 +32,20 @@ export type PaymentStatusResult =
 
 export async function checkPaymentStatusAction(input: {
   orderId: string;
+  /**
+   * The `?t=` the order page was opened with, forwarded by the waiting card.
+   *
+   * Without it this action refused every caller who had no session, which is
+   * every guest — the exact buyers this poll exists for, since a guest who has
+   * just come back from Jomma has no other way to learn their payment landed.
+   */
+  accessToken?: string;
 }): Promise<PaymentStatusResult> {
   const parsed = z.uuid().safeParse(input.orderId);
   if (!parsed.success) return { ok: false, message: "Unknown order." };
   const orderId = parsed.data;
 
   const session = await getSession();
-  if (!session) return { ok: false, message: "Please sign in." };
 
   const [order] = await db
     .select({
@@ -57,7 +64,7 @@ export async function checkPaymentStatusAction(input: {
   // the whole value of walking them.
   if (!order) return { ok: false, message: "Unknown order." };
 
-  if (!orderBelongsTo(order, contactsFromSession(session))) {
+  if (!orderBelongsTo(order, claimantFrom(session, input.accessToken))) {
     return { ok: false, message: "Unknown order." };
   }
 
