@@ -1,11 +1,17 @@
 import { Mark, mergeAttributes, Node } from "@tiptap/core";
 import {
-  HIGHLIGHT_VARS,
+  FONT_FAMILIES,
+  FONT_FAMILY_VARS,
+  type FontFamily,
+  HEX_COLOR,
   HIGHLIGHTS,
   type Highlight,
-  TEXT_COLOR_VARS,
+  highlightValue,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
   TEXT_COLORS,
   type TextColor,
+  textColorValue,
 } from "./schema";
 
 /**
@@ -23,11 +29,22 @@ declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     textColor: {
       setTextColor: (color: TextColor) => ReturnType;
+      /** Two hex values, one per theme. */
+      setCustomTextColor: (light: string, dark: string) => ReturnType;
       unsetTextColor: () => ReturnType;
     };
     highlight: {
       setHighlight: (color: Highlight) => ReturnType;
+      setCustomHighlight: (light: string, dark: string) => ReturnType;
       unsetHighlight: () => ReturnType;
+    };
+    fontFamily: {
+      setFontFamily: (family: FontFamily) => ReturnType;
+      unsetFontFamily: () => ReturnType;
+    };
+    fontSize: {
+      setFontSize: (size: number) => ReturnType;
+      unsetFontSize: () => ReturnType;
     };
     media: {
       insertMedia: (attrs: {
@@ -39,40 +56,71 @@ declare module "@tiptap/core" {
 }
 
 /**
- * Semantic text colour.
+ * Text colour, named or custom.
  *
- * The stored attribute is a name — "critical", not "#b3261e" — and the CSS
- * variable it maps to carries both light and dark values via light-dark(). A
- * seller therefore cannot pick a colour that is legible in the editor and
- * invisible to half their buyers, which is the failure any hex-based colour
- * picker has by construction.
+ * A named colour stores a token — "critical", not "#b3261e" — and resolves to
+ * a CSS variable that already carries both a light and a dark value. It is the
+ * default because the seller cannot get it wrong.
+ *
+ * A custom colour stores two hex values and renders light-dark(), the same
+ * mechanism the tokens use. Asking for both is what keeps the escape hatch
+ * safe: a single hex would look right in the editor and disappear for
+ * dark-mode buyers, and the seller would never find out.
  */
 export const TextColorMark = Mark.create({
   name: "textColor",
 
   addAttributes() {
     return {
+      // A named token. Null when the seller chose their own pair.
       color: {
-        default: "default" as TextColor,
+        default: null as TextColor | null,
         parseHTML: (element) => element.getAttribute("data-color"),
-        renderHTML: (attributes) => {
-          const color = attributes.color as TextColor;
-          if (!TEXT_COLORS.includes(color)) return {};
-          return {
-            "data-color": color,
-            style: `color: ${TEXT_COLOR_VARS[color]}`,
-          };
-        },
+        renderHTML: () => ({}),
+      },
+      light: {
+        default: null as string | null,
+        parseHTML: (element) => element.getAttribute("data-light"),
+        renderHTML: () => ({}),
+      },
+      dark: {
+        default: null as string | null,
+        parseHTML: (element) => element.getAttribute("data-dark"),
+        renderHTML: () => ({}),
       },
     };
   },
 
   parseHTML() {
-    return [{ tag: "span[data-color]" }];
+    return [{ tag: "span[data-color]" }, { tag: "span[data-light]" }];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ["span", mergeAttributes(HTMLAttributes), 0];
+  /**
+   * Built here rather than per-attribute, because the inline style depends on
+   * the combination: a token renders a CSS variable, a pair renders
+   * light-dark(). Splitting that across three renderHTML callbacks would emit
+   * a half-formed style for whichever attribute ran last.
+   */
+  renderHTML({ mark }) {
+    // mark.attrs, not HTMLAttributes. The latter holds what the per-attribute
+    // renderHTML callbacks contributed, and those deliberately contribute
+    // nothing because the style depends on the combination — reading it here
+    // yields an empty object and a span with no colour at all.
+    const attrs = mark.attrs as {
+      color?: TextColor | null;
+      light?: string | null;
+      dark?: string | null;
+    };
+
+    const style = textColorValue(attrs);
+    if (!style) return ["span", {}, 0];
+
+    const marker =
+      attrs.light && attrs.dark
+        ? { "data-light": attrs.light, "data-dark": attrs.dark }
+        : { "data-color": attrs.color as string };
+
+    return ["span", mergeAttributes(marker, { style: `color: ${style}` }), 0];
   },
 
   addCommands() {
@@ -84,7 +132,20 @@ export const TextColorMark = Mark.create({
           // "default" is the absence of a colour, not a colour. Storing it as
           // a mark would litter the document with spans that do nothing.
           if (color === "default") return commands.unsetMark(this.name);
-          return commands.setMark(this.name, { color });
+          return commands.setMark(this.name, {
+            color,
+            light: null,
+            dark: null,
+          });
+        },
+      setCustomTextColor:
+        (light, dark) =>
+        ({ commands }) => {
+          // Validated here as well as on the server: the editor is the last
+          // place a malformed value can be caught while the seller is still
+          // looking at the field that produced it.
+          if (!HEX_COLOR.test(light) || !HEX_COLOR.test(dark)) return false;
+          return commands.setMark(this.name, { color: null, light, dark });
         },
       unsetTextColor:
         () =>
@@ -94,32 +155,64 @@ export const TextColorMark = Mark.create({
   },
 });
 
+/**
+ * Text background, named or custom.
+ *
+ * The named ones are the muted halves of the design tokens, chosen so ordinary
+ * body text stays legible on top of them in both themes. A custom pair is the
+ * seller's own, and the picker previews text on it for the same reason the
+ * text-colour one does.
+ */
 export const HighlightMark = Mark.create({
   name: "highlight",
 
   addAttributes() {
     return {
       color: {
-        default: "accent" as Highlight,
+        default: null as Highlight | null,
         parseHTML: (element) => element.getAttribute("data-highlight"),
-        renderHTML: (attributes) => {
-          const color = attributes.color as Highlight;
-          if (!HIGHLIGHTS.includes(color)) return {};
-          return {
-            "data-highlight": color,
-            style: `background-color: ${HIGHLIGHT_VARS[color]}`,
-          };
-        },
+        renderHTML: () => ({}),
+      },
+      light: {
+        default: null as string | null,
+        parseHTML: (element) => element.getAttribute("data-light"),
+        renderHTML: () => ({}),
+      },
+      dark: {
+        default: null as string | null,
+        parseHTML: (element) => element.getAttribute("data-dark"),
+        renderHTML: () => ({}),
       },
     };
   },
 
   parseHTML() {
-    return [{ tag: "mark[data-highlight]" }];
+    return [{ tag: "mark[data-highlight]" }, { tag: "mark[data-light]" }];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ["mark", mergeAttributes(HTMLAttributes), 0];
+  // mark.attrs, not HTMLAttributes — see TextColorMark for why.
+  renderHTML({ mark }) {
+    const attrs = mark.attrs as {
+      color?: Highlight | null;
+      light?: string | null;
+      dark?: string | null;
+    };
+
+    const background = highlightValue(attrs);
+    if (!background) return ["mark", {}, 0];
+
+    const marker =
+      attrs.light && attrs.dark
+        ? { "data-light": attrs.light, "data-dark": attrs.dark }
+        : { "data-highlight": attrs.color as string };
+
+    return [
+      "mark",
+      mergeAttributes(marker, {
+        style: `background-color: ${background}; color: inherit`,
+      }),
+      0,
+    ];
   },
 
   addCommands() {
@@ -128,9 +221,135 @@ export const HighlightMark = Mark.create({
         (color) =>
         ({ commands }) => {
           if (!HIGHLIGHTS.includes(color)) return false;
-          return commands.setMark(this.name, { color });
+          return commands.setMark(this.name, {
+            color,
+            light: null,
+            dark: null,
+          });
+        },
+      setCustomHighlight:
+        (light, dark) =>
+        ({ commands }) => {
+          if (!HEX_COLOR.test(light) || !HEX_COLOR.test(dark)) return false;
+          return commands.setMark(this.name, { color: null, light, dark });
         },
       unsetHighlight:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
+    };
+  },
+});
+
+/**
+ * Type family.
+ *
+ * Three options, all already loaded or system-provided. See
+ * lib/rich-text/schema.ts for why this is not a free-text font name.
+ */
+export const FontFamilyMark = Mark.create({
+  name: "fontFamily",
+
+  addAttributes() {
+    return {
+      family: {
+        default: "default" as FontFamily,
+        parseHTML: (element) => element.getAttribute("data-font"),
+        renderHTML: () => ({}),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "span[data-font]" }];
+  },
+
+  renderHTML({ mark }) {
+    const family = mark.attrs.family as FontFamily;
+    if (!FONT_FAMILIES.includes(family) || family === "default") {
+      return ["span", {}, 0];
+    }
+    return [
+      "span",
+      mergeAttributes(
+        { "data-font": family },
+        { style: `font-family: ${FONT_FAMILY_VARS[family]}` },
+      ),
+      0,
+    ];
+  },
+
+  addCommands() {
+    return {
+      setFontFamily:
+        (family) =>
+        ({ commands }) => {
+          if (!FONT_FAMILIES.includes(family)) return false;
+          // "default" is the absence of a font, not a font.
+          if (family === "default") return commands.unsetMark(this.name);
+          return commands.setMark(this.name, { family });
+        },
+      unsetFontFamily:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
+    };
+  },
+});
+
+/**
+ * Text size.
+ *
+ * Clamped rather than rejected when out of range: a seller dragging a slider
+ * or holding an arrow key should hit the end and stop, not have the command
+ * quietly fail and leave them wondering which keystroke did nothing.
+ */
+export const FontSizeMark = Mark.create({
+  name: "fontSize",
+
+  addAttributes() {
+    return {
+      size: {
+        default: null as number | null,
+        parseHTML: (element) => {
+          const raw = element.getAttribute("data-size");
+          return raw ? Number(raw) : null;
+        },
+        renderHTML: () => ({}),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "span[data-size]" }];
+  },
+
+  renderHTML({ mark }) {
+    const size = mark.attrs.size as number | null;
+    if (!size || !Number.isFinite(size)) return ["span", {}, 0];
+    return [
+      "span",
+      mergeAttributes(
+        { "data-size": String(size) },
+        { style: `font-size: ${size}px` },
+      ),
+      0,
+    ];
+  },
+
+  addCommands() {
+    return {
+      setFontSize:
+        (size) =>
+        ({ commands }) => {
+          if (!Number.isFinite(size)) return false;
+          const clamped = Math.min(
+            MAX_FONT_SIZE,
+            Math.max(MIN_FONT_SIZE, Math.round(size)),
+          );
+          return commands.setMark(this.name, { size: clamped });
+        },
+      unsetFontSize:
         () =>
         ({ commands }) =>
           commands.unsetMark(this.name),

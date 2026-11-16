@@ -39,17 +39,21 @@ const safeHref = z.string().refine(
 );
 
 /**
- * Text colours are semantic names, never hex.
+ * Text colour comes in two forms, and the difference is who guarantees
+ * legibility in dark mode.
  *
- * A seller picking `#1a1a1a` because it looked right in the light editor has
- * just made their description unreadable for every buyer browsing in dark
- * mode, and they will never see it happen. There is no way to store a raw
- * colour that does not have that failure.
+ * A NAMED colour is a meaning — "this is a warning" — and resolves through
+ * app/globals.css, where every token is declared with light-dark() and so
+ * already carries a light value and a corrected dark one. The seller picks
+ * once and both themes are right by construction. This is the default because
+ * it is the option that cannot go wrong.
  *
- * Every token here resolves through app/globals.css, where each is declared
- * with light-dark() and therefore carries both values already. The seller
- * picks a meaning — "this is a warning" — and both themes are correct by
- * construction rather than by the seller checking.
+ * A CUSTOM colour is two hex values, one per theme, and the seller owns the
+ * outcome. Storing a single hex would be the trap: `#1a1a1a` looks right in
+ * the light editor and is invisible to every dark-mode buyer, and the seller
+ * would never see it happen. Requiring both is what makes "choose anything"
+ * safe to offer — the choice is still explicit for each theme, it is simply
+ * theirs to make rather than the design system's.
  */
 export const TEXT_COLORS = [
   "default",
@@ -70,7 +74,51 @@ export const TEXT_COLOR_VARS: Record<TextColor, string> = {
   critical: "var(--color-critical)",
 };
 
-export const HIGHLIGHTS = ["accent", "positive", "critical"] as const;
+/**
+ * Six-digit hex only.
+ *
+ * Deliberately narrow. These values end up in a `style` attribute, and CSS
+ * accepts a great deal more than colours there — `url(...)` among them. React
+ * does not sanitise style values, so this pattern is the actual boundary
+ * rather than a formatting preference.
+ */
+export const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+const hexColor = z
+  .string()
+  .regex(HEX_COLOR, "Use a 6-digit hex colour such as #1a2b3c.");
+
+export type CustomColor = { light: string; dark: string };
+
+/**
+ * What a textColor mark carries.
+ *
+ * Flat rather than a nested union because TipTap attributes are flat, and a
+ * shape the editor cannot express is a shape that silently fails to save.
+ * Exactly one of the two forms is populated; the refine below enforces it.
+ */
+export type TextColorAttrs =
+  | { color: TextColor; light?: null; dark?: null }
+  | { color?: null; light: string; dark: string };
+
+/** The CSS value a mark renders as, whichever form it took. */
+export function textColorValue(attrs: {
+  color?: TextColor | null;
+  light?: string | null;
+  dark?: string | null;
+}): string | null {
+  if (attrs.light && attrs.dark) {
+    // The same mechanism the design tokens use, so a custom colour responds to
+    // the theme exactly as a named one does.
+    return `light-dark(${attrs.light}, ${attrs.dark})`;
+  }
+  if (attrs.color && TEXT_COLORS.includes(attrs.color)) {
+    return TEXT_COLOR_VARS[attrs.color];
+  }
+  return null;
+}
+
+export const HIGHLIGHTS = ["accent", "positive", "critical", "muted"] as const;
 
 export type Highlight = (typeof HIGHLIGHTS)[number];
 
@@ -79,7 +127,159 @@ export const HIGHLIGHT_VARS: Record<Highlight, string> = {
   accent: "var(--color-accent-muted)",
   positive: "var(--color-positive-muted)",
   critical: "var(--color-critical-muted)",
+  muted: "var(--color-muted)",
 };
+
+/** The CSS background a highlight renders as, named or custom. */
+export function highlightValue(attrs: {
+  color?: Highlight | null;
+  light?: string | null;
+  dark?: string | null;
+}): string | null {
+  if (attrs.light && attrs.dark) {
+    return `light-dark(${attrs.light}, ${attrs.dark})`;
+  }
+  if (attrs.color && HIGHLIGHTS.includes(attrs.color)) {
+    return HIGHLIGHT_VARS[attrs.color];
+  }
+  return null;
+}
+
+/**
+ * The type families a seller may choose from.
+ *
+ * A closed catalogue rather than a free-text font name. See
+ * lib/rich-text/fonts.ts for what that buys and what it costs — the short of
+ * it is that a typed-in name either loads an arbitrary web font for every
+ * buyer or silently falls back to something the seller cannot see is wrong.
+ *
+ * `default` and `serif` cost nothing: the first is the store's own face, the
+ * second the reader's system serif. Everything else is fetched only when a
+ * description actually uses it.
+ */
+export const FONT_CATALOGUE = [
+  {
+    id: "default",
+    label: "Store default",
+    category: "Sans",
+    stack: "var(--font-sans)",
+  },
+  {
+    id: "dm-sans",
+    label: "DM Sans",
+    category: "Sans",
+    stack: "var(--font-dm-sans)",
+  },
+  {
+    id: "work-sans",
+    label: "Work Sans",
+    category: "Sans",
+    stack: "var(--font-work-sans)",
+  },
+  {
+    id: "poppins",
+    label: "Poppins",
+    category: "Sans",
+    stack: "var(--font-poppins)",
+  },
+  {
+    id: "montserrat",
+    label: "Montserrat",
+    category: "Sans",
+    stack: "var(--font-montserrat)",
+  },
+  {
+    id: "space-grotesk",
+    label: "Space Grotesk",
+    category: "Sans",
+    stack: "var(--font-space-grotesk)",
+  },
+  {
+    id: "hind-siliguri",
+    label: "Hind Siliguri",
+    category: "Bengali",
+    stack: "var(--font-hind-siliguri)",
+  },
+  {
+    id: "serif",
+    label: "System serif",
+    category: "Serif",
+    stack: "ui-serif, Georgia, Cambria, serif",
+  },
+  {
+    id: "playfair",
+    label: "Playfair Display",
+    category: "Serif",
+    stack: "var(--font-playfair)",
+  },
+  {
+    id: "merriweather",
+    label: "Merriweather",
+    category: "Serif",
+    stack: "var(--font-merriweather)",
+  },
+  { id: "lora", label: "Lora", category: "Serif", stack: "var(--font-lora)" },
+  {
+    id: "source-serif",
+    label: "Source Serif",
+    category: "Serif",
+    stack: "var(--font-source-serif)",
+  },
+  {
+    id: "bebas",
+    label: "Bebas Neue",
+    category: "Display",
+    stack: "var(--font-bebas)",
+  },
+  {
+    id: "caveat",
+    label: "Caveat",
+    category: "Handwriting",
+    stack: "var(--font-caveat)",
+  },
+  {
+    id: "mono",
+    label: "JetBrains Mono",
+    category: "Mono",
+    stack: "var(--font-mono)",
+  },
+] as const;
+
+export const FONT_FAMILIES = FONT_CATALOGUE.map(
+  (font) => font.id,
+) as unknown as readonly FontFamily[];
+
+export type FontFamily = (typeof FONT_CATALOGUE)[number]["id"];
+
+export const FONT_FAMILY_VARS = Object.fromEntries(
+  FONT_CATALOGUE.map((font) => [font.id, font.stack]),
+) as Record<FontFamily, string>;
+
+export const FONT_FAMILY_LABELS = Object.fromEntries(
+  FONT_CATALOGUE.map((font) => [font.id, font.label]),
+) as Record<FontFamily, string>;
+
+/**
+ * Text size, in pixels.
+ *
+ * Pixels because that is the unit sellers think in, and a description is
+ * authored against a fixed body size rather than nested inside something that
+ * rescales. Stored as a plain number so the renderer decides the unit, not the
+ * document.
+ *
+ * Bounded on both ends. Below 10px text is unreadable on a phone, and above 72
+ * a "description" is really a banner and will overflow the column it sits in —
+ * neither is a choice worth letting a seller make by accident in a field they
+ * cannot preview at buyer width.
+ */
+export const MIN_FONT_SIZE = 10;
+export const MAX_FONT_SIZE = 72;
+
+/** The sizes offered as one click, spanning body copy to a section opener. */
+export const FONT_SIZE_PRESETS = [12, 14, 16, 18, 20, 24, 30, 36, 48] as const;
+
+/** The size a description renders at when no mark says otherwise. */
+export const BASE_FONT_SIZE = 14;
 
 const markSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("bold") }),
@@ -88,11 +288,62 @@ const markSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("code") }),
   z.object({
     type: z.literal("textColor"),
-    attrs: z.object({ color: z.enum(TEXT_COLORS) }),
+    attrs: z
+      .object({
+        color: z.enum(TEXT_COLORS).nullish(),
+        light: hexColor.nullish(),
+        dark: hexColor.nullish(),
+      })
+      // One form or the other, never both and never neither. A mark carrying
+      // both a token and a hex pair has no defined meaning, and one carrying
+      // neither is a span that colours nothing.
+      .refine(
+        (attrs) => {
+          const named = Boolean(attrs.color);
+          const custom = Boolean(attrs.light) && Boolean(attrs.dark);
+          return named !== custom;
+        },
+        {
+          message:
+            "A colour is either a named one or a light/dark pair, not both.",
+        },
+      ),
   }),
   z.object({
     type: z.literal("highlight"),
-    attrs: z.object({ color: z.enum(HIGHLIGHTS) }),
+    // Same two forms as textColor: a token, or the seller's own pair.
+    attrs: z
+      .object({
+        color: z.enum(HIGHLIGHTS).nullish(),
+        light: hexColor.nullish(),
+        dark: hexColor.nullish(),
+      })
+      .refine(
+        (attrs) =>
+          Boolean(attrs.color) !==
+          (Boolean(attrs.light) && Boolean(attrs.dark)),
+        {
+          message:
+            "A highlight is either a named colour or a light/dark pair, not both.",
+        },
+      ),
+  }),
+  z.object({
+    type: z.literal("fontSize"),
+    attrs: z.object({
+      size: z.number().int().min(MIN_FONT_SIZE).max(MAX_FONT_SIZE),
+    }),
+  }),
+  z.object({
+    type: z.literal("fontFamily"),
+    attrs: z.object({
+      family: z.enum(
+        FONT_CATALOGUE.map((font) => font.id) as unknown as [
+          FontFamily,
+          ...FontFamily[],
+        ],
+      ),
+    }),
   }),
   z.object({
     type: z.literal("link"),

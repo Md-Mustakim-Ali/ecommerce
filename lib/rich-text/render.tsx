@@ -4,11 +4,12 @@ import { VideoEmbed } from "@/components/shop/video-embed";
 import {
   type Block,
   type DescriptionDoc,
-  HIGHLIGHT_VARS,
+  FONT_FAMILY_VARS,
+  highlightValue,
   type Inline,
   type ListItem,
   type Mark,
-  TEXT_COLOR_VARS,
+  textColorValue,
 } from "./schema";
 
 /**
@@ -53,26 +54,41 @@ function wrapMark(wrapped: ReactNode, mark: Mark): ReactNode {
           {wrapped}
         </code>
       );
-    case "textColor":
-      // A CSS variable, so the value is whatever the active theme resolves it
-      // to. Storing a literal here is what breaks dark mode.
-      return (
-        <span style={{ color: TEXT_COLOR_VARS[mark.attrs.color] }}>
-          {wrapped}
-        </span>
-      );
-    case "highlight":
+    case "textColor": {
+      // Either a design token or the seller's own light/dark pair — both
+      // resolve at paint time against the active theme, so neither can be a
+      // colour that only works in one mode.
+      const color = textColorValue(mark.attrs);
+      if (!color) return wrapped;
+      return <span style={{ color }}>{wrapped}</span>;
+    }
+    case "highlight": {
+      const background = highlightValue(mark.attrs);
+      if (!background) return wrapped;
       return (
         <mark
           className="rounded px-0.5"
-          style={{
-            backgroundColor: HIGHLIGHT_VARS[mark.attrs.color],
-            color: "inherit",
-          }}
+          style={{ backgroundColor: background, color: "inherit" }}
         >
           {wrapped}
         </mark>
       );
+    }
+
+    case "fontSize": {
+      return (
+        <span style={{ fontSize: `${mark.attrs.size}px` }}>{wrapped}</span>
+      );
+    }
+
+    case "fontFamily": {
+      if (mark.attrs.family === "default") return wrapped;
+      return (
+        <span style={{ fontFamily: FONT_FAMILY_VARS[mark.attrs.family] }}>
+          {wrapped}
+        </span>
+      );
+    }
     case "link":
       return (
         <a

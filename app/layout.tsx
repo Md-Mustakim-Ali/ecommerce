@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Manrope } from "next/font/google";
 import { NavTransitionSettler } from "@/components/motion/morph-link";
+import { FONT_VARIABLE_CLASSES } from "@/lib/rich-text/fonts";
 import { themeClass } from "@/lib/theme";
 import { getTheme } from "@/lib/theme.server";
 import "./globals.css";
@@ -43,7 +44,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${jetbrainsMono.variable} ${themeClass(theme)}`}
+      className={`${manrope.variable} ${jetbrainsMono.variable} ${FONT_VARIABLE_CLASSES} ${themeClass(theme)}`}
     >
       <body className="min-h-dvh bg-surface-0 font-sans text-primary-text">
         {/*
