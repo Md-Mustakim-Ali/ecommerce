@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orderId: string }> },
 ) {
   const { orderId } = await params;
@@ -25,6 +25,9 @@ export async function GET(
     orderId,
     userId: session?.user.id ?? null,
     email: session?.user.email,
+    // Carried through from the page's own URL, so a guest can download the
+    // invoice they can already see rather than being refused at the last step.
+    accessToken: new URL(request.url).searchParams.get("t") ?? undefined,
   });
 
   // 404 rather than 403, matching the page: confirming an order exists but is

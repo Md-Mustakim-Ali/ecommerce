@@ -27,6 +27,11 @@ export default async function OrderPage({
   const order = await getOrderForBuyer({
     orderId,
     userId: session?.user.id ?? null,
+    // A guest arrives with no session and nothing this page could ask them
+    // for, so the receipt link and the redirect out of checkout carry a token
+    // signed for this order. Without it, guest checkout has no confirmation
+    // page at all.
+    accessToken: typeof query.t === "string" ? query.t : undefined,
   });
   // notFound rather than a 403: a uuid is not authorisation, and confirming
   // that an order exists but is not yours is a small leak with no upside.

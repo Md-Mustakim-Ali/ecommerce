@@ -197,6 +197,8 @@ export async function getInvoiceForBuyer(input: {
   userId: string | null;
   email?: string;
   phone?: string;
+  /** The `?t=` a guest arrives with. See lib/orders/access.ts. */
+  accessToken?: string;
 }): Promise<Invoice | null> {
   const [order] = await db
     .select()

@@ -16,20 +16,23 @@ export const metadata: Metadata = { title: "Invoice" };
  */
 export default async function InvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ t?: string }>;
 }) {
-  const { orderId } = await params;
+  const [{ orderId }, query] = await Promise.all([params, searchParams]);
   const session = await getSession();
 
-  // Same authorisation as the order page itself: by account, or by the email
-  // the order was placed with so a guest can reach theirs. Not found rather
-  // than forbidden — confirming an order exists but is not yours is a small
-  // leak with no upside.
+  // Same authorisation as the order page itself: by account, by the email the
+  // order was placed with, or by the signed token a guest arrives holding.
+  // Not found rather than forbidden — confirming an order exists but is not
+  // yours is a small leak with no upside.
   const invoice = await getInvoiceForBuyer({
     orderId,
     userId: session?.user.id ?? null,
     email: session?.user.email,
+    accessToken: query.t,
   });
 
   if (!invoice) notFound();

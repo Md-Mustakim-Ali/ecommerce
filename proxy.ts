@@ -9,7 +9,22 @@ import { type NextRequest, NextResponse } from "next/server";
  * be forged, so it proves nothing. Real authorization lives in `requireUser()`
  * inside the page or server action. See lib/auth/guards.ts.
  */
-const PROTECTED_PREFIXES = ["/account", "/dashboard", "/admin", "/orders"];
+/**
+ * `/orders` is deliberately NOT here.
+ *
+ * It was, and it broke guest checkout: a buyer who was not signed in got
+ * redirected to sign-in the moment their order was placed, and the link in
+ * their receipt landed in the same place. A prefix guard cannot tell "not
+ * yours" from "yours, but you have no account", and guest checkout is the
+ * whole point of that page.
+ *
+ * Nothing is weakened by dropping it. This check was only ever optimistic —
+ * see below — while the order page enforces ownership properly through
+ * getOrderForBuyer: the account it belongs to, a contact it was placed with,
+ * or a signed access token. That check is the one that matters, and it ran
+ * anyway.
+ */
+const PROTECTED_PREFIXES = ["/account", "/dashboard", "/admin"];
 
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -27,10 +42,5 @@ export default function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/account/:path*",
-    "/dashboard/:path*",
-    "/admin/:path*",
-    "/orders/:path*",
-  ],
+  matcher: ["/account/:path*", "/dashboard/:path*", "/admin/:path*"],
 };

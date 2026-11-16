@@ -10,6 +10,7 @@ import { orders } from "@/lib/db/schema";
 import { resolveDiscountForCart } from "@/lib/discounts/resolve";
 import { env } from "@/lib/env";
 import { PLATFORM_CURRENCY } from "@/lib/money/currency";
+import { orderPath, signOrderAccess } from "@/lib/orders/access";
 import { placeOrder } from "@/lib/orders/create";
 import { paymentProvider } from "@/lib/payments";
 import { jommaConfigured } from "@/lib/payments/jomma/client";
@@ -119,6 +120,14 @@ export type CheckoutResult =
       ok: true;
       orderId: string;
       orderNumber: string;
+      /**
+       * Signed, for this order only.
+       *
+       * A guest has no session, so without this the redirect out of checkout
+       * lands on a confirmation page that refuses them — which is precisely
+       * what guest checkout cannot afford. See lib/orders/access.ts.
+       */
+      accessToken: string;
       /** Present when the provider needs the buyer to do something. */
       redirectUrl?: string;
       settlesOffline: boolean;
@@ -276,7 +285,7 @@ export async function placeOrderAction(
       // rather than lossy: there is no BD mobile to suggest, and the pay page
       // asks as it did before.
       payerMsisdn: normaliseBdMobile(parsed.data.shippingAddress.phone),
-      returnUrl: absoluteUrl(`/orders/${result.orderId}?awaiting=1`),
+      returnUrl: absoluteUrl(`${orderPath(result.orderId)}&awaiting=1`),
       cancelUrl: absoluteUrl("/cart"),
       attempt: 1,
     });
@@ -299,6 +308,7 @@ export async function placeOrderAction(
       ok: true,
       orderId: result.orderId,
       orderNumber: result.orderNumber,
+      accessToken: signOrderAccess(result.orderId),
       redirectUrl: started.payUrl,
       // Nothing about landing back on returnUrl means paid. Only the webhook
       // moves this order, which is why the buyer lands on a waiting page.
@@ -330,6 +340,7 @@ export async function placeOrderAction(
     ok: true,
     orderId: result.orderId,
     orderNumber: result.orderNumber,
+    accessToken: signOrderAccess(result.orderId),
     redirectUrl: intent.redirectUrl,
     settlesOffline: provider.settlesOffline,
   };

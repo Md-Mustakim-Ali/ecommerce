@@ -25,6 +25,13 @@ export async function getOrderForBuyer(input: {
   email?: string;
   /** The same, for a buyer who checked out with a number and no address. */
   phone?: string;
+  /**
+   * The `?t=` a receipt link or the post-checkout redirect carries.
+   *
+   * This is how a guest gets in: they have no session, and the page cannot
+   * ask them for the address they checked out with.
+   */
+  accessToken?: string;
 }) {
   const [order] = await db
     .select()

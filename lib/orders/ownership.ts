@@ -1,5 +1,6 @@
 import { isPlaceholderEmail } from "@/lib/auth/placeholder-email";
 import { normaliseBdMobile } from "@/lib/validation/phone";
+import { verifyOrderAccess } from "./access";
 
 /**
  * Whether an order belongs to whoever is asking.
@@ -10,13 +11,17 @@ import { normaliseBdMobile } from "@/lib/validation/phone";
  * stricter in one of them than the others is a buyer who can see their order
  * but not download its invoice.
  *
- * Ownership is one of three things, any of which is enough:
+ * Ownership is one of four things, any of which is enough:
  *
  * - the account it is attached to, which is what claiming sets;
- * - the email it was placed with, so a guest can open theirs from the receipt
- *   link before they have an account at all;
- * - the phone it was placed with, the same courtesy for a buyer who checked
- *   out with a number and no address.
+ * - a signed access token for this order, which is what the receipt link and
+ *   the redirect out of checkout carry — see lib/orders/access.ts. This is the
+ *   one guests actually arrive with, since a guest has no session and the page
+ *   has no way to learn their address;
+ * - the email it was placed with, so a signed-in buyer sees an order placed
+ *   before they had an account;
+ * - the phone it was placed with, the same for a buyer who checked out with a
+ *   number and no address.
  *
  * The contact comparison is not a security boundary on its own — it is the
  * "guest opening their own confirmation" path, and it only ever runs against a
@@ -27,6 +32,7 @@ import { normaliseBdMobile } from "@/lib/validation/phone";
  */
 export function orderBelongsTo(
   order: {
+    id?: string;
     buyerId: string | null;
     email: string | null;
     contactPhone: string | null;
@@ -35,9 +41,14 @@ export function orderBelongsTo(
     userId?: string | null;
     email?: string | null;
     phone?: string | null;
+    /** The `?t=` from the URL. Checked against this order id, never any other. */
+    accessToken?: string | null;
   },
 ): boolean {
   if (claimant.userId && order.buyerId === claimant.userId) return true;
+
+  if (order.id && verifyOrderAccess(order.id, claimant.accessToken))
+    return true;
 
   if (
     claimant.email &&

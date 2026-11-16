@@ -2,6 +2,7 @@
 // chain through jiti, which has no path aliases.
 import { env } from "../env";
 import { formatMoney } from "../money/format";
+import { orderPath } from "../orders/access";
 import type { EmailMessage } from "./provider";
 
 /**
@@ -85,7 +86,7 @@ export function orderConfirmation(input: {
   lines: OrderLine[];
   storeCount: number;
 }): EmailMessage {
-  const url = `${baseUrl()}/orders/${input.orderId}`;
+  const url = `${baseUrl()}${orderPath(input.orderId)}`;
 
   const rows = input.lines
     .map(
@@ -146,7 +147,7 @@ export function shipmentNotice(input: {
   carrier: string | null;
   trackingNumber: string | null;
 }): EmailMessage {
-  const url = `${baseUrl()}/orders/${input.orderId}`;
+  const url = `${baseUrl()}${orderPath(input.orderId)}`;
   const tracking =
     input.carrier && input.trackingNumber
       ? `${input.carrier} ${input.trackingNumber}`
@@ -210,7 +211,7 @@ export function buyerMessageNotice(input: {
   orderId: string;
   body: string;
 }): EmailMessage {
-  const url = `${baseUrl()}/orders/${input.orderId}`;
+  const url = `${baseUrl()}${orderPath(input.orderId)}`;
   // Quoted, but the reply happens on the site — replying to this address would
   // reach a mailbox nobody watches, and threading it back onto the order is
   // what makes the conversation useful later.

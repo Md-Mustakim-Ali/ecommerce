@@ -291,7 +291,11 @@ export function CheckoutForm({
         return;
       }
 
-      router.push(`/orders/${result.orderId}?placed=1`);
+      // The token comes back from the action because a guest has no session
+      // and the confirmation page has nothing else to recognise them by.
+      router.push(
+        `/orders/${result.orderId}?placed=1&t=${encodeURIComponent(result.accessToken)}`,
+      );
     });
   }
 
