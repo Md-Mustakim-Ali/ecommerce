@@ -216,8 +216,16 @@ export type PendingMediaRow = {
  * Bounded, because this runs on a free instance with a request timeout. A
  * backlog is drained across several sweeps rather than one heroic pass that
  * gets killed halfway and leaves the counters half-written.
+ *
+ * `storeId` narrows it to one store, for the sweep that rides along with a
+ * seller opening their own dashboard. Without the filter a busy store could
+ * fill the limit and a quiet one would never see its own uploads advance on
+ * the page where its owner is waiting for them.
  */
-export async function loadPendingMedia(limit = 25): Promise<PendingMediaRow[]> {
+export async function loadPendingMedia(
+  limit = 25,
+  storeId?: string,
+): Promise<PendingMediaRow[]> {
   return db
     .select({
       id: productImages.id,
@@ -238,6 +246,7 @@ export async function loadPendingMedia(limit = 25): Promise<PendingMediaRow[]> {
       and(
         inArray(productImages.state, ["queued", "uploading", "processing"]),
         isNotNull(productImages.providerRef),
+        ...(storeId ? [eq(products.storeId, storeId)] : []),
       ),
     )
     .orderBy(asc(productImages.lastCheckedAt), asc(productImages.createdAt))

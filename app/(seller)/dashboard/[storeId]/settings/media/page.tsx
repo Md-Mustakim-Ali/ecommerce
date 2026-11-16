@@ -6,6 +6,7 @@ import {
 } from "@/lib/actions/google-connections";
 import { getStoreAccess } from "@/lib/auth/access";
 import { encryptionConfigured } from "@/lib/media/crypto";
+import { sweepStoreMediaAfterResponse } from "@/lib/media/opportunistic";
 import { MediaConnections } from "./connections";
 
 export const metadata: Metadata = { title: "Media connections" };
@@ -30,6 +31,15 @@ export default async function MediaSettingsPage({
   if (!access || access.membershipStatus === "none") notFound();
   if (!access.permissions.has("media.connection.view")) notFound();
   const canManage = access.permissions.has("media.connection.manage");
+
+  // Somebody opening this page is usually here because an upload misbehaved.
+  //
+  // The sweep runs after this response, so what renders below is the state as
+  // it was on arrival — the freshened version appears on the next load. That
+  // is the trade for not making the page wait on Google, and it converges
+  // quickly in practice because the person waiting on an upload is the person
+  // pressing refresh.
+  sweepStoreMediaAfterResponse(storeId);
 
   const [overview, redirectUri] = await Promise.all([
     loadConnectionOverviewAction(storeId),

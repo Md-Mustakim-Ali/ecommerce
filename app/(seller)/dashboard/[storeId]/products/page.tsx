@@ -9,6 +9,7 @@ import { requireStorePermission } from "@/lib/auth/access";
 import { listProductsForStore } from "@/lib/catalog/product-editor";
 import { db } from "@/lib/db";
 import { stores } from "@/lib/db/schema";
+import { sweepStoreMediaAfterResponse } from "@/lib/media/opportunistic";
 
 export const metadata: Metadata = { title: "Products" };
 
@@ -28,6 +29,10 @@ export default async function StoreProductsPage({
   const query = await searchParams;
 
   const access = await requireStorePermission(storeId, "product.view");
+
+  // The listing shows each product's status, so it is where a seller notices a
+  // draft that should have gone live. Sweeping here is what makes it true.
+  sweepStoreMediaAfterResponse(storeId);
 
   const store = await db.query.stores.findFirst({
     where: eq(stores.id, storeId),

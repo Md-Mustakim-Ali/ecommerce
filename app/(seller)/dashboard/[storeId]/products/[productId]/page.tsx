@@ -11,6 +11,7 @@ import {
 } from "@/lib/catalog/product-editor";
 import { db } from "@/lib/db";
 import { categories } from "@/lib/db/schema";
+import { sweepStoreMediaAfterResponse } from "@/lib/media/opportunistic";
 import { parseDescriptionDoc } from "@/lib/rich-text/schema";
 import { ProductEditor } from "./product-editor";
 
@@ -35,6 +36,11 @@ export default async function EditProductPage({
 }: PageProps<"/dashboard/[storeId]/products/[productId]">) {
   const { storeId, productId } = await params;
   const access = await requireStorePermission(storeId, "product.update");
+
+  // This is the page a seller sits on while a video transcodes, so it is the
+  // one where waiting an hour for the scheduled sweep is most obviously wrong.
+  // Runs after the response, so it costs the render nothing.
+  sweepStoreMediaAfterResponse(storeId);
 
   const [product, available, categoryOptions] = await Promise.all([
     getProductForEditing(productId, storeId),

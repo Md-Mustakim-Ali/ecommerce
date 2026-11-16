@@ -187,8 +187,35 @@ export async function sweepPendingMedia(
   now: Date = new Date(),
   limit = 25,
 ): Promise<SweepSummary> {
+  return advance(await loadPendingMedia(limit), now);
+}
+
+/**
+ * The same pass, narrowed to one store, for a seller's own dashboard load.
+ *
+ * The scheduled sweep is late by design — hourly, plus whatever delay GitHub's
+ * scheduler adds — which is fine for auto-publishing while nobody is looking
+ * and poor for the person refreshing the page waiting on their video. This
+ * runs where they already are.
+ *
+ * A smaller limit than the scheduled sweep on purpose. This one is riding on
+ * somebody's page load rather than a job with eight minutes to spend, and a
+ * seller with forty pending photos is better served by four quick passes than
+ * one that holds the instance for a minute.
+ */
+export async function sweepStoreMedia(
+  storeId: string,
+  now: Date = new Date(),
+  limit = 10,
+): Promise<SweepSummary> {
+  return advance(await loadPendingMedia(limit, storeId), now);
+}
+
+async function advance(
+  pending: readonly PendingMediaRow[],
+  now: Date,
+): Promise<SweepSummary> {
   const summary = emptySummary();
-  const pending = await loadPendingMedia(limit);
   if (pending.length === 0) return summary;
 
   const candidatesByStore = new Map<string, GrantCandidate[]>();
