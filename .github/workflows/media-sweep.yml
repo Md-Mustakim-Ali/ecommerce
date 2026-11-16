@@ -1,10 +1,22 @@
-# Pokes POST /api/media/sweep on a schedule.
+# Pokes the two sweep endpoints on a schedule.
 #
-# The sweep is what advances media Google is still working on — a Drive file
-# that is not servable yet, a YouTube video still transcoding — and publishes
-# the products that were blocked waiting for it. Google never calls back, so
-# without something asking, a video sits on "processing" forever and an
-# auto-publish product never goes live.
+# ── /api/media/sweep ───────────────────────────────────────────────────────
+# Advances media Google is still working on — a Drive file that is not servable
+# yet, a YouTube video still transcoding — and publishes the products that were
+# blocked waiting for it. Google never calls back, so without something asking,
+# a video sits on "processing" forever and an auto-publish product never goes
+# live.
+#
+# ── /api/orders/sweep ──────────────────────────────────────────────────────
+# Releases the stock held by guest orders nobody ever confirmed. A gated order
+# holds its inventory the moment it is placed, exactly as an unpaid one does,
+# so without this an abandoned checkout sits on stock forever and somebody
+# bored with a script sits on all of it.
+#
+# Both live in ONE workflow deliberately. Each run wakes a sleeping Render
+# instance, and that wake is what spends the workspace's shared 750 free
+# instance-hours — see the cadence note below. A second scheduled workflow
+# would double that cost to do work this run can do in an extra second.
 #
 # A GitHub Action rather than a Render cron job, because Render's cron is a
 # paid service type and this repo already gets 2,000 free Actions minutes a
@@ -37,7 +49,10 @@
 # Mismatch the secret and every run fails with 401, which is the intended
 # behaviour: the endpoint refuses rather than running unauthenticated.
 
-name: Media sweep
+# The filename stays media-sweep.yml on purpose: GitHub keys a schedule to the
+# file path, so renaming it would drop the existing schedule and register a new
+# one. The display name covers both.
+name: Sweeps
 
 on:
   schedule:
@@ -56,7 +71,7 @@ permissions: {}
 # Queued rather than cancelled: the sweep is idempotent, so letting it finish
 # is cheaper than starting over.
 concurrency:
-  group: media-sweep
+  group: sweeps
   cancel-in-progress: false
 
 jobs:
@@ -99,7 +114,7 @@ jobs:
                --output /dev/null --write-out 'woke in %{time_total}s (HTTP %{http_code})\n' \
                "$APP_URL/"
 
-      - name: Sweep
+      - name: Sweep media
         env:
           APP_URL: ${{ vars.APP_URL }}
           SWEEP_SECRET: ${{ secrets.MEDIA_SWEEP_SECRET }}
@@ -114,3 +129,19 @@ jobs:
                --header "Authorization: Bearer $SWEEP_SECRET" \
                --write-out '\nHTTP %{http_code} in %{time_total}s\n' \
                "$APP_URL/api/media/sweep?limit=$LIMIT"
+
+      # `always()`, so a failing media sweep does not silently stop orders from
+      # being released. They share nothing but a bearer token, and one being
+      # broken is no reason to let abandoned checkouts hold stock indefinitely.
+      - name: Sweep unconfirmed orders
+        if: always()
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          SWEEP_SECRET: ${{ secrets.MEDIA_SWEEP_SECRET }}
+        run: |
+          curl --silent --show-error --fail-with-body \
+               --connect-timeout 30 --max-time 300 \
+               --request POST \
+               --header "Authorization: Bearer $SWEEP_SECRET" \
+               --write-out '\nHTTP %{http_code} in %{time_total}s\n' \
+               "$APP_URL/api/orders/sweep"
