@@ -1,12 +1,19 @@
 "use client";
 
-import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
+import {
+  EditorContent,
+  ReactNodeViewRenderer,
+  useEditor,
+  useEditorState,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
+  Baseline,
   Bold,
   Code,
   Heading2,
   Heading3,
+  Highlighter,
   Image as ImageIcon,
   Italic,
   Link2,
@@ -19,19 +26,29 @@ import {
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  FontFamilyMark,
+  FontSizeMark,
   HighlightMark,
   MediaNodeExtension,
   TextColorMark,
 } from "@/lib/rich-text/extensions";
 import {
   type DescriptionDoc,
+  type FontFamily,
+  HIGHLIGHT_VARS,
+  HIGHLIGHTS,
+  type Highlight,
   parseDescriptionDoc,
   TEXT_COLOR_VARS,
   TEXT_COLORS,
+  type TextColor,
 } from "@/lib/rich-text/schema";
+import { CustomColorPicker } from "./color-picker";
+import { FontPicker } from "./font-picker";
 import { type EditorMedia, MediaProvider } from "./media-context";
 import { MediaNodeView } from "./media-node-view";
 import { MediaPicker } from "./media-picker";
+import { FontSizePicker } from "./size-picker";
 
 /**
  * The product description editor.
@@ -41,21 +58,35 @@ import { MediaPicker } from "./media-picker";
  * produces a node the server rejects is a save that fails with no way for the
  * seller to find the offending character.
  *
- * The two notable absences are colour pickers and font controls. Colour is a
- * short list of semantic names rather than a wheel, so a description cannot be
- * made unreadable in dark mode; typography belongs to the storefront's design
- * system, not to whoever is writing the copy.
+ * Colour is one control opening one panel: the theme's named colours, a preset
+ * palette, and a custom picker. Whichever route the seller takes, the result
+ * carries a value for both themes — the named ones because the design tokens
+ * already do, and a custom one because the picker derives its dark counterpart
+ * unless the seller overrides it. A single hex chosen in the light editor is
+ * exactly how a description becomes invisible to half the buyers, and no path
+ * through this toolbar can produce one. Highlight works the same way, with its
+ * preview flipped: what matters there is whether text stays readable ON the
+ * colour, not the colour against the page.
+ *
+ * The font control offers a searchable catalogue with every option set in the
+ * face it names, because the whole decision is what the letters look like. It
+ * is a fixed list rather than a text box: a typed-in font name would load an
+ * arbitrary web font for every buyer, or fall back to something the seller
+ * cannot see is wrong from a machine where the font is installed.
  */
 
 export type RichTextEditorProps = {
   value: DescriptionDoc | null;
   onChange: (doc: DescriptionDoc) => void;
   media: ReadonlyMap<string, EditorMedia>;
+  /** Needed by the media picker to start an upload of its own. */
+  storeId: string;
+  productId: string;
   /** Uploads a file and returns the new row's id. */
   onUploadImage: (
     file: File,
   ) => Promise<{ ok: boolean; mediaId?: string; message: string }>;
-  /** Attaches a YouTube link and returns the new row's id. */
+  /** Attaches a pasted link — YouTube or an image — and returns the row id. */
   onAttachVideo: (
     url: string,
   ) => Promise<{ ok: boolean; mediaId?: string; message: string }>;
@@ -104,11 +135,15 @@ export function RichTextEditor({
   value,
   onChange,
   media,
+  storeId,
+  productId,
   onUploadImage,
   onAttachVideo,
   disabled = false,
 }: RichTextEditorProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
 
   const editor = useEditor({
     // Next renders this on the server first; without it React logs a
@@ -135,6 +170,8 @@ export function RichTextEditor({
       }),
       TextColorMark,
       HighlightMark,
+      FontFamilyMark,
+      FontSizeMark,
       MediaNodeExtension.extend({
         addNodeView() {
           return ReactNodeViewRenderer(MediaNodeView);
@@ -180,6 +217,85 @@ export function RichTextEditor({
     [editor],
   );
 
+  /**
+   * Everything the toolbar reads, subscribed properly.
+   *
+   * TipTap v3 stopped re-rendering on every transaction, so reading
+   * editor.isActive() straight from render gives whatever was true when the
+   * component last happened to render. That is not a subtle staleness: every
+   * pressed state, the colour swatches and the font and size labels simply
+   * stop tracking the cursor, so the toolbar describes a selection the seller
+   * moved away from several keystrokes ago.
+   *
+   * useEditorState subscribes to the selector and re-renders only when one of
+   * these values actually changes, which is both correct and cheaper than the
+   * legacy re-render-on-everything flag.
+   */
+  const toolbar = useEditorState({
+    editor,
+    selector: ({ editor: instance }) => {
+      if (!instance) return null;
+      const color = instance.getAttributes("textColor") as {
+        color?: TextColor | null;
+        light?: string | null;
+        dark?: string | null;
+      };
+      const highlight = instance.getAttributes("highlight") as {
+        color?: Highlight | null;
+        light?: string | null;
+        dark?: string | null;
+      };
+      const size = instance.getAttributes("fontSize")?.size;
+
+      return {
+        bold: instance.isActive("bold"),
+        italic: instance.isActive("italic"),
+        strike: instance.isActive("strike"),
+        code: instance.isActive("code"),
+        heading2: instance.isActive("heading", { level: 2 }),
+        heading3: instance.isActive("heading", { level: 3 }),
+        bulletList: instance.isActive("bulletList"),
+        orderedList: instance.isActive("orderedList"),
+        blockquote: instance.isActive("blockquote"),
+        link: instance.isActive("link"),
+        highlightActive: instance.isActive("highlight"),
+        textColor: color,
+        highlight,
+        font: (instance.getAttributes("fontFamily")?.family ??
+          "default") as FontFamily,
+        size: typeof size === "number" ? size : null,
+      };
+    },
+  });
+
+  const custom =
+    toolbar?.textColor.light && toolbar?.textColor.dark
+      ? { light: toolbar.textColor.light, dark: toolbar.textColor.dark }
+      : null;
+  const activeToken = (toolbar?.textColor.color ?? null) as TextColor | null;
+  // What each trigger shows: the custom light value, the token's variable, or
+  // nothing when the cursor is not inside that mark.
+  const textSwatch = custom
+    ? custom.light
+    : activeToken
+      ? TEXT_COLOR_VARS[activeToken]
+      : null;
+
+  const customHighlight =
+    toolbar?.highlight.light && toolbar?.highlight.dark
+      ? { light: toolbar.highlight.light, dark: toolbar.highlight.dark }
+      : null;
+  const activeHighlight = (toolbar?.highlight.color ??
+    null) as Highlight | null;
+  const highlightSwatch = customHighlight
+    ? customHighlight.light
+    : activeHighlight
+      ? HIGHLIGHT_VARS[activeHighlight]
+      : null;
+
+  const activeFont = toolbar?.font ?? "default";
+  const activeSize = toolbar?.size ?? null;
+
   if (!editor) {
     return (
       <div className="min-h-48 rounded-md border border-border bg-muted/30" />
@@ -192,28 +308,28 @@ export function RichTextEditor({
         <div className="flex flex-wrap items-center gap-0.5 border-border border-b p-1">
           <ToolbarButton
             label="Bold"
-            active={editor.isActive("bold")}
+            active={Boolean(toolbar?.bold)}
             onClick={() => editor.chain().focus().toggleBold().run()}
           >
             <Bold className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             label="Italic"
-            active={editor.isActive("italic")}
+            active={Boolean(toolbar?.italic)}
             onClick={() => editor.chain().focus().toggleItalic().run()}
           >
             <Italic className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             label="Strikethrough"
-            active={editor.isActive("strike")}
+            active={Boolean(toolbar?.strike)}
             onClick={() => editor.chain().focus().toggleStrike().run()}
           >
             <Strikethrough className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             label="Inline code"
-            active={editor.isActive("code")}
+            active={Boolean(toolbar?.code)}
             onClick={() => editor.chain().focus().toggleCode().run()}
           >
             <Code className="h-4 w-4" />
@@ -223,7 +339,7 @@ export function RichTextEditor({
 
           <ToolbarButton
             label="Heading"
-            active={editor.isActive("heading", { level: 2 })}
+            active={Boolean(toolbar?.heading2)}
             onClick={() =>
               editor.chain().focus().toggleHeading({ level: 2 }).run()
             }
@@ -232,7 +348,7 @@ export function RichTextEditor({
           </ToolbarButton>
           <ToolbarButton
             label="Subheading"
-            active={editor.isActive("heading", { level: 3 })}
+            active={Boolean(toolbar?.heading3)}
             onClick={() =>
               editor.chain().focus().toggleHeading({ level: 3 }).run()
             }
@@ -241,21 +357,21 @@ export function RichTextEditor({
           </ToolbarButton>
           <ToolbarButton
             label="Bulleted list"
-            active={editor.isActive("bulletList")}
+            active={Boolean(toolbar?.bulletList)}
             onClick={() => editor.chain().focus().toggleBulletList().run()}
           >
             <List className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             label="Numbered list"
-            active={editor.isActive("orderedList")}
+            active={Boolean(toolbar?.orderedList)}
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
           >
             <ListOrdered className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             label="Quote"
-            active={editor.isActive("blockquote")}
+            active={Boolean(toolbar?.blockquote)}
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
           >
             <Quote className="h-4 w-4" />
@@ -268,7 +384,7 @@ export function RichTextEditor({
           </ToolbarButton>
           <ToolbarButton
             label="Link"
-            active={editor.isActive("link")}
+            active={Boolean(toolbar?.link)}
             onClick={insertLink}
           >
             <Link2 className="h-4 w-4" />
@@ -277,35 +393,131 @@ export function RichTextEditor({
           <span className="mx-1 h-5 w-px bg-border" />
 
           {/*
-            A fixed palette of meanings, not a colour wheel. Each swatch is a
-            CSS variable declared with light-dark(), so whatever the seller
-            picks is legible in both themes — which a hex value never is.
+            One control per mark rather than a row of swatches each. The panel
+            behind them holds the theme's named colours, a preset palette and a
+            custom picker — keeping swatches out here as well would be the same
+            choice offered twice, in two places that could disagree.
           */}
-          {/* A fieldset rather than role="group": the swatches are announced
-              as one labelled set instead of five unrelated buttons, and the
-              native element carries that meaning without an ARIA attribute. */}
-          <fieldset className="flex items-center gap-0.5 border-0 p-0">
-            <legend className="sr-only">Text colour</legend>
-            {TEXT_COLORS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  editor.chain().focus().setTextColor(color).run();
-                }}
-                aria-label={`${color} text`}
-                title={`${color} text`}
-                aria-pressed={editor.isActive("textColor", { color })}
-                className={`h-6 w-6 rounded border transition-transform hover:scale-110 ${
-                  editor.isActive("textColor", { color })
-                    ? "border-accent ring-1 ring-accent"
-                    : "border-border"
-                }`}
-                style={{ backgroundColor: TEXT_COLOR_VARS[color] }}
+          <span className="relative">
+            <button
+              type="button"
+              // onClick, unlike the formatting buttons. Those apply a command
+              // immediately and use onMouseDown+preventDefault to stop the
+              // editor losing its selection first. This one only opens a
+              // panel, and suppressing mousedown stops the panel's own fields
+              // from taking focus. TipTap remembers the selection, and the
+              // .focus() in each apply handler restores it.
+              onClick={() => {
+                setHighlightPickerOpen(false);
+                setColorPickerOpen((open) => !open);
+              }}
+              aria-label="Text colour"
+              aria-expanded={colorPickerOpen}
+              title="Text colour"
+              className="flex h-8 items-center gap-1.5 rounded px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Baseline className="h-4 w-4" />
+              <span
+                className="h-1 w-4 rounded-full ring-1 ring-foreground/20"
+                style={{ background: textSwatch ?? "var(--color-foreground)" }}
               />
-            ))}
-          </fieldset>
+            </button>
+
+            {colorPickerOpen ? (
+              <CustomColorPicker
+                mode="text"
+                tokens={TEXT_COLORS}
+                tokenVars={TEXT_COLOR_VARS}
+                activeToken={activeToken}
+                initialLight={custom?.light}
+                initialDark={custom?.dark}
+                onCancel={() => setColorPickerOpen(false)}
+                onClear={() => {
+                  editor.chain().focus().unsetTextColor().run();
+                  setColorPickerOpen(false);
+                }}
+                onApplyToken={(token) => {
+                  editor
+                    .chain()
+                    .focus()
+                    .setTextColor(token as TextColor)
+                    .run();
+                  setColorPickerOpen(false);
+                }}
+                onApply={(light, dark) => {
+                  editor.chain().focus().setCustomTextColor(light, dark).run();
+                  setColorPickerOpen(false);
+                }}
+              />
+            ) : null}
+          </span>
+
+          <span className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setColorPickerOpen(false);
+                setHighlightPickerOpen((open) => !open);
+              }}
+              aria-label="Highlight"
+              aria-expanded={highlightPickerOpen}
+              title="Highlight"
+              className={`flex h-8 items-center gap-1.5 rounded px-2 transition-colors ${
+                toolbar?.highlightActive
+                  ? "bg-accent-muted text-accent-text"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <Highlighter className="h-4 w-4" />
+              <span
+                className="h-1 w-4 rounded-full ring-1 ring-foreground/20"
+                style={{ background: highlightSwatch ?? "var(--color-muted)" }}
+              />
+            </button>
+
+            {highlightPickerOpen ? (
+              <CustomColorPicker
+                mode="highlight"
+                tokens={HIGHLIGHTS}
+                tokenVars={HIGHLIGHT_VARS}
+                activeToken={activeHighlight}
+                initialLight={customHighlight?.light}
+                initialDark={customHighlight?.dark}
+                onCancel={() => setHighlightPickerOpen(false)}
+                onClear={() => {
+                  editor.chain().focus().unsetHighlight().run();
+                  setHighlightPickerOpen(false);
+                }}
+                onApplyToken={(token) => {
+                  editor
+                    .chain()
+                    .focus()
+                    .setHighlight(token as Highlight)
+                    .run();
+                  setHighlightPickerOpen(false);
+                }}
+                onApply={(light, dark) => {
+                  editor.chain().focus().setCustomHighlight(light, dark).run();
+                  setHighlightPickerOpen(false);
+                }}
+              />
+            ) : null}
+          </span>
+
+          <span className="mx-1 h-5 w-px bg-border" />
+
+          <FontPicker
+            value={activeFont}
+            onChange={(family) =>
+              editor.chain().focus().setFontFamily(family).run()
+            }
+          />
+
+          <FontSizePicker
+            value={activeSize}
+            onChange={(size) => editor.chain().focus().setFontSize(size).run()}
+            onClear={() => editor.chain().focus().unsetFontSize().run()}
+          />
 
           <span className="mx-1 h-5 w-px bg-border" />
 
@@ -336,6 +548,8 @@ export function RichTextEditor({
       <MediaPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
+        storeId={storeId}
+        productId={productId}
         onUploadImage={onUploadImage}
         onAttachVideo={onAttachVideo}
         onInserted={handleInserted}
