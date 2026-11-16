@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Package, Receipt } from "lucide-react";
+import { CheckCircle2, FileText, Mail, Package, Receipt } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -69,13 +69,49 @@ export default async function OrderPage({
         />
       ) : null}
 
-      {justPlaced ? (
+      {/*
+        Read from the order's own status rather than from `?placed=1`.
+
+        The first attempt at this put a "check your email" panel in the
+        checkout form's client state, which was wrong in a way that only showed
+        up on the live site: placing an order empties the cart, so the checkout
+        page re-renders, finds nothing in it, and replaces the whole form with
+        "Nothing to check out". The buyer finished checkout and was told their
+        cart was empty. Driving it from the status means the message survives a
+        refresh and is still here when they come back to the link.
+      */}
+      {order.status === "unconfirmed" ? (
+        <div className="flex items-start gap-3 rounded-xl bg-accent-muted p-5">
+          <Mail
+            className="mt-0.5 size-5 shrink-0 text-accent-text"
+            aria-hidden
+          />
+          <div className="flex flex-col gap-1">
+            <p className="font-medium text-accent-text">
+              One more click and it is yours
+            </p>
+            <p className="text-secondary-text text-sm">
+              We sent a confirmation link
+              {order.email ? (
+                <>
+                  {" "}
+                  to <span className="font-medium">{order.email}</span>
+                </>
+              ) : null}
+              . Open it and we will start packing. Your items are held for 24
+              hours, and nothing has been charged.
+            </p>
+          </div>
+        </div>
+      ) : justPlaced ? (
         <div className="flex items-start gap-3 rounded-xl bg-positive-muted p-5 text-positive">
           <CheckCircle2 className="mt-0.5 size-5 shrink-0" aria-hidden />
           <div className="flex flex-col gap-1">
             <p className="font-medium">Order placed</p>
             <p className="text-sm opacity-90">
-              We have emailed a receipt to {order.email}.
+              {order.email
+                ? `We have emailed a receipt to ${order.email}.`
+                : "Keep this page's link — it opens your order any time."}
               {order.subOrders.length > 1
                 ? ` Your ${order.subOrders.length} sellers each ship their own part, so expect more than one parcel.`
                 : ""}
