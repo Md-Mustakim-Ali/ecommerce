@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getPlatformAccess, getUserStores } from "@/lib/auth/access";
 import { requireUser } from "@/lib/auth/guards";
+import { formatDateTime } from "@/lib/datetime/format";
 import { db } from "@/lib/db";
 import { savedItems } from "@/lib/db/schema";
 import { PLATFORM_CURRENCY } from "@/lib/money/currency";
@@ -149,11 +150,7 @@ export default async function AccountPage() {
                       </span>
                       <span className="block text-tertiary-text text-xs">
                         {order.placedAt
-                          ? order.placedAt.toLocaleDateString(undefined, {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })
+                          ? formatDateTime(order.placedAt)
                           : "Not placed"}
                       </span>
                     </span>

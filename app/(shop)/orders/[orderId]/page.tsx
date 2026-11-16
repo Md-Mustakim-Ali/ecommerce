@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/guards";
+import { formatDateTime } from "@/lib/datetime/format";
 import { formatMoney } from "@/lib/money/format";
 import { withAccessToken } from "@/lib/orders/access";
 import {
@@ -194,7 +195,10 @@ export default async function OrderPage({
             {order.orderNumber}
           </h1>
           <p className="text-secondary-text text-sm">
-            Placed {order.placedAt?.toLocaleDateString() ?? "—"}
+            {/* The time, not just the date. "Placed 10 Sep" is not enough to
+                find an order by on a day somebody bought twice, and it was the
+                half that made the timezone bug invisible. */}
+            Placed {formatDateTime(order.placedAt)}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -249,8 +253,24 @@ export default async function OrderPage({
             {sub.items.map((item) => (
               <li key={item.id} className="flex justify-between gap-3 text-sm">
                 <span className="min-w-0">
-                  {/* Snapshotted at purchase. Never joined to the live product. */}
-                  <span className="line-clamp-1">{item.productTitle}</span>
+                  {/*
+                    The title is snapshotted at purchase and never read from the
+                    live product — a rename must not change what this order says
+                    it was. The link is a separate matter: it is navigation, and
+                    it is null whenever the product or its store is no longer
+                    active, so an archived product renders as plain text rather
+                    than as a link to a 404.
+                  */}
+                  {item.productSlug ? (
+                    <Link
+                      href={`/p/${item.productSlug}`}
+                      className="line-clamp-1 hover:underline"
+                    >
+                      {item.productTitle}
+                    </Link>
+                  ) : (
+                    <span className="line-clamp-1">{item.productTitle}</span>
+                  )}
                   <span className="text-tertiary-text text-xs">
                     {item.variantLabel ? `${item.variantLabel} · ` : ""}
                     Qty {item.quantity}
@@ -354,7 +374,7 @@ export default async function OrderPage({
                     {payment.senderMsisdn
                       ? `From ${displayPhone(payment.senderMsisdn)} · `
                       : ""}
-                    {(payment.occurredAt ?? payment.appliedAt).toLocaleString()}
+                    {formatDateTime(payment.occurredAt ?? payment.appliedAt)}
                     {/* `manual` and `admin` mean a human resolved this rather
                         than the matcher, which is worth saying plainly. */}
                     {payment.matchedBy !== "automatic"

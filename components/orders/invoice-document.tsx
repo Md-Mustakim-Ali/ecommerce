@@ -1,3 +1,4 @@
+import { formatDateLong } from "@/lib/datetime/format";
 import { formatMoney } from "@/lib/money/format";
 import type { Invoice, PaymentState } from "@/lib/orders/invoice";
 import { cn } from "@/lib/utils";
@@ -132,11 +133,7 @@ export function InvoiceDocument({
         <div className="text-right">
           <div className="font-semibold text-[13pt]">{platformName}</div>
           <div className="mt-1 text-[10pt] text-black/60">
-            {invoice.placedAt.toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
+            {formatDateLong(invoice.placedAt)}
           </div>
           {/*
             A status word, not a colour. A red badge is invisible on the

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/guards";
+import { formatDateTime } from "@/lib/datetime/format";
 import { formatMoney } from "@/lib/money/format";
 import { listOrdersForBuyer } from "@/lib/orders/queries";
 
@@ -46,7 +47,7 @@ export default async function OrdersPage() {
                   {order.orderNumber}
                 </span>
                 <span className="text-tertiary-text text-xs">
-                  {order.placedAt?.toLocaleDateString() ?? "—"}
+                  {formatDateTime(order.placedAt)}
                 </span>
               </div>
               <div className="flex items-center gap-3">

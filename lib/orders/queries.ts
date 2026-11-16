@@ -5,6 +5,8 @@ import {
   orderItems,
   orderNotes,
   orders,
+  products,
+  productVariants,
   stores,
   subOrders,
 } from "@/lib/db/schema";
@@ -16,6 +18,12 @@ import { orderBelongsTo } from "./ownership";
  * Everything displayed comes from the snapshot columns on order_items, never
  * from a join to the live product. A renamed, repriced or deleted product must
  * still render the order exactly as the buyer saw it.
+ *
+ * The one thing read from the live product is its slug, and only to build a
+ * link. That is navigation rather than display: no figure, name or price on
+ * the order changes because of it, and the slug is dropped entirely when the
+ * product or its store is no longer active, so a link is never rendered to a
+ * page that would 404.
  */
 
 export async function getOrderForBuyer(input: {
@@ -61,10 +69,37 @@ export async function getOrderForBuyer(input: {
     .innerJoin(stores, eq(stores.id, subOrders.storeId))
     .where(eq(subOrders.orderId, order.id));
 
+  /*
+    Items, plus a slug to link each one back to its product.
+
+    The displayed columns stay snapshots — title, price and SKU are still read
+    from order_items and never from the live product, so a renamed or repriced
+    product cannot change what this order says it was. The slug is navigation,
+    not display, which is a different thing: the buyer looking at "Waxed walnut
+    portable speaker" reasonably expects clicking it to go there.
+
+    Left joins the whole way down, because every link in the chain is allowed
+    to be missing. `variantId` is `on delete set null`, so a deleted variant
+    leaves the item intact with nothing to point at.
+
+    Both statuses are checked because getProductBySlug requires both — it
+    filters `products.status = 'active'` and `stores.status = 'active'` — so
+    linking on anything less would render a link straight to a 404. An
+    archived product is exactly the case: still perfectly real on this order,
+    no longer a page.
+  */
   const items = await db
-    .select()
+    .select({
+      item: orderItems,
+      productSlug: products.slug,
+      productStatus: products.status,
+      productStoreStatus: stores.status,
+    })
     .from(orderItems)
     .innerJoin(subOrders, eq(subOrders.id, orderItems.subOrderId))
+    .leftJoin(productVariants, eq(productVariants.id, orderItems.variantId))
+    .leftJoin(products, eq(products.id, productVariants.productId))
+    .leftJoin(stores, eq(stores.id, products.storeId))
     .where(eq(subOrders.orderId, order.id));
 
   // Only the buyer-visible half. Internal notes are filtered in SQL rather
@@ -97,8 +132,16 @@ export async function getOrderForBuyer(input: {
     subOrders: subs.map((sub) => ({
       ...sub,
       items: items
-        .filter((row) => row.order_items.subOrderId === sub.id)
-        .map((row) => row.order_items),
+        .filter((row) => row.item.subOrderId === sub.id)
+        .map((row) => ({
+          ...row.item,
+          // Null unless the page it would point at actually exists.
+          productSlug:
+            row.productStatus === "active" &&
+            row.productStoreStatus === "active"
+              ? row.productSlug
+              : null,
+        })),
       messages: messages.filter((row) => row.subOrderId === sub.id),
     })),
   };

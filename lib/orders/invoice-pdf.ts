@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
+import { formatDateLong } from "@/lib/datetime/format";
 import { formatMoney } from "@/lib/money/format";
 import type { Invoice, PaymentState } from "./invoice";
 
@@ -226,17 +227,7 @@ export async function renderInvoicePdf(
 
   const headerTop = left;
   drawRight(doc, platformName, right, headerTop + 2, 12, true);
-  drawRight(
-    doc,
-    invoice.placedAt.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }),
-    right,
-    headerTop + 20,
-    9,
-  );
+  drawRight(doc, formatDateLong(invoice.placedAt), right, headerTop + 20, 9);
 
   // The status, carried by a box and a word rather than by colour — this comes
   // out of a black-and-white printer more often than not.

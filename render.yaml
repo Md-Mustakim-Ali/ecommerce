@@ -45,6 +45,23 @@ services:
       - key: NODE_ENV
         value: production
 
+      # Render's containers run UTC. This shop sells in Bangladesh, so a
+      # `new Date().toLocaleString()` on the server rendered every timestamp six
+      # hours behind — an order paid at 11:43 read 5:43 AM, and anything placed
+      # after 18:00 Dhaka showed the *previous day's* date.
+      #
+      # It is invisible in development: every machine that builds this is
+      # already on Dhaka time, so the bug exists only where nobody looks at it.
+      #
+      # A mitigation, not the fix. It only moves the default for code that asks
+      # for no timezone, it does nothing for client components — those render
+      # in the browser's zone whatever this says — and a date's correctness
+      # should not depend on a dashboard setting nobody remembers. Formatting
+      # that must be right goes through lib/datetime/format.ts, which names the
+      # zone explicitly and is therefore the same everywhere.
+      - key: TZ
+        value: Asia/Dhaka
+
       # Neon, and it must be a Postgres 18 project: uuidv7() is the DEFAULT on
       # every primary key in this schema and does not exist before 18. Use the
       # POOLED connection string — the one with `-pooler` in the host — because

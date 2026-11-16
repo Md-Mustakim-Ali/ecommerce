@@ -4,6 +4,7 @@ import { Loader2, Send } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { replyToStoreAction } from "@/lib/actions/order-notes";
+import { formatDateTime } from "@/lib/datetime/format";
 
 export type BuyerMessage = {
   id: string;
@@ -67,7 +68,7 @@ export function MessageThread({
             >
               <span className="mb-0.5 block text-tertiary-text text-xs">
                 {message.authorRole === "buyer" ? "You" : storeName} ·{" "}
-                {new Date(message.createdAt).toLocaleDateString()}
+                {formatDateTime(message.createdAt)}
               </span>
               <p className="whitespace-pre-wrap">{message.body}</p>
             </li>
