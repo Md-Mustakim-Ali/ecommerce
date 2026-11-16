@@ -1,4 +1,11 @@
-import { CheckCircle2, FileText, Mail, Package, Receipt } from "lucide-react";
+import {
+  CheckCircle2,
+  FileText,
+  Mail,
+  Package,
+  Phone,
+  Receipt,
+} from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/guards";
 import { formatMoney } from "@/lib/money/format";
+import { withAccessToken } from "@/lib/orders/access";
 import {
   getAppliedPaymentsForOrder,
   getOrderForBuyer,
@@ -154,7 +162,14 @@ export default async function OrderPage({
           <Button
             variant="outline"
             size="sm"
-            render={<Link href={`/orders/${order.id}/invoice`} />}
+            render={
+              <Link
+                href={withAccessToken(
+                  `/orders/${order.id}/invoice`,
+                  accessToken,
+                )}
+              />
+            }
           >
             <FileText aria-hidden className="size-4" />
             Invoice
@@ -327,36 +342,100 @@ export default async function OrderPage({
         </section>
       ) : null}
 
-      <section className="flex flex-col gap-2 text-sm">
-        <h2 className="font-medium">Shipping to</h2>
-        <address className="text-secondary-text not-italic">
-          {order.shippingAddress.recipientName}
-          <br />
-          {order.shippingAddress.line1}
-          {order.shippingAddress.line2 ? (
-            <>
+      {/*
+        Order details.
+
+        Was a lone "Shipping to" block, which left the buyer unable to see the
+        contact the order was actually placed against — the email a receipt was
+        sent to, or the number a courier will ring. That matters most to the
+        guest who typed it minutes ago and wants to check they got it right,
+        and it is the same answer for a signed-in buyer, whose account address
+        is not necessarily the one this order carries.
+      */}
+      <section className="flex flex-col gap-4 rounded-xl border border-border bg-surface-1 p-5">
+        <h2 className="font-medium text-sm">Details</h2>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="flex flex-col gap-2 text-sm">
+            <h3 className="text-tertiary-text text-xs uppercase tracking-wide">
+              Contact
+            </h3>
+            <dl className="flex flex-col gap-1.5 text-secondary-text">
+              {/* An order carries an email, a phone, or both — the schema's
+                  check constraint requires at least one, never neither. */}
+              {order.email ? (
+                <div className="flex items-start gap-2">
+                  <Mail className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <dd className="min-w-0 break-words">{order.email}</dd>
+                </div>
+              ) : null}
+              {order.contactPhone ? (
+                <div className="flex items-start gap-2">
+                  <Phone className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <dd className="min-w-0">{order.contactPhone}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {order.shippingAddress.phone &&
+            order.shippingAddress.phone !== order.contactPhone ? (
+              <p className="text-tertiary-text text-xs">
+                Delivery number {order.shippingAddress.phone}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2 text-sm">
+            <h3 className="text-tertiary-text text-xs uppercase tracking-wide">
+              Shipping to
+            </h3>
+            <address className="text-secondary-text not-italic">
+              {order.shippingAddress.recipientName}
               <br />
-              {order.shippingAddress.line2}
-            </>
-          ) : null}
-          <br />
-          {order.shippingAddress.city}
-          {order.shippingAddress.region
-            ? `, ${order.shippingAddress.region}`
-            : ""}{" "}
-          {order.shippingAddress.postalCode}
-          <br />
-          {order.shippingAddress.countryCode}
-        </address>
+              {order.shippingAddress.line1}
+              {order.shippingAddress.line2 ? (
+                <>
+                  <br />
+                  {order.shippingAddress.line2}
+                </>
+              ) : null}
+              <br />
+              {order.shippingAddress.city}
+              {order.shippingAddress.region
+                ? `, ${order.shippingAddress.region}`
+                : ""}{" "}
+              {order.shippingAddress.postalCode}
+              <br />
+              {order.shippingAddress.countryCode}
+            </address>
+          </div>
+        </div>
       </section>
 
-      <Button
-        variant="outline"
-        render={<Link href="/account/orders" />}
-        className="self-start"
-      >
-        All orders
-      </Button>
+      {/*
+        Only for somebody who has an order list to go to.
+
+        A guest has no account, so this sent them to a page that redirects to
+        sign-in — an invitation to leave the one page that can show them their
+        order, since the token that authorises it is in this URL and nowhere
+        else. They get the shop instead.
+      */}
+      {session ? (
+        <Button
+          variant="outline"
+          render={<Link href="/account/orders" />}
+          className="self-start"
+        >
+          All orders
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          render={<Link href="/" />}
+          className="self-start"
+        >
+          Continue shopping
+        </Button>
+      )}
     </div>
   );
 }

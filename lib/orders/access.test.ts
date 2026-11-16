@@ -1,5 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { orderPath, signOrderAccess, verifyOrderAccess } from "./access";
+import {
+  orderPath,
+  signOrderAccess,
+  verifyOrderAccess,
+  withAccessToken,
+} from "./access";
 
 // The secret is read at call time precisely so this works — importing lib/env
 // would make the whole suite need a real environment.
@@ -66,5 +71,41 @@ describe("order access tokens", () => {
 
     const token = new URL(path, "https://example.com").searchParams.get("t");
     expect(verifyOrderAccess(ORDER, token)).toBe(true);
+  });
+});
+
+/**
+ * A guest's authorisation is the URL and nothing else, so every link out of a
+ * page they reached by token has to hand it on. Three did not: the order
+ * page's Invoice button, and the invoice's own "Back to order" and "Save as
+ * PDF". Both destinations had always read `?t=` — nothing ever passed it, so
+ * a guest clicking Invoice on their own open order got a 404.
+ */
+describe("withAccessToken", () => {
+  it("carries a token onto a plain path", () => {
+    const token = signOrderAccess(ORDER);
+    const href = withAccessToken(`/orders/${ORDER}/invoice`, token);
+
+    const url = new URL(href, "https://example.com");
+    expect(url.pathname).toBe(`/orders/${ORDER}/invoice`);
+    expect(verifyOrderAccess(ORDER, url.searchParams.get("t"))).toBe(true);
+  });
+
+  it("appends to a path that already has a query", () => {
+    const token = signOrderAccess(ORDER);
+    const href = withAccessToken(`/orders/${ORDER}?placed=1`, token);
+
+    const url = new URL(href, "https://example.com");
+    expect(url.searchParams.get("placed")).toBe("1");
+    expect(verifyOrderAccess(ORDER, url.searchParams.get("t"))).toBe(true);
+  });
+
+  // The signed-in case: their session travels on its own, and appending an
+  // empty `t=` would put a value in the URL that can only ever be refused.
+  it("leaves the path alone when there is no token", () => {
+    const path = `/orders/${ORDER}/invoice`;
+    expect(withAccessToken(path)).toBe(path);
+    expect(withAccessToken(path, null)).toBe(path);
+    expect(withAccessToken(path, "")).toBe(path);
   });
 });

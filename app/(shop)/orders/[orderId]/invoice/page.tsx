@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { InvoiceActions } from "@/components/orders/invoice-actions";
 import { InvoiceDocument } from "@/components/orders/invoice-document";
 import { getSession } from "@/lib/auth/guards";
+import { withAccessToken } from "@/lib/orders/access";
 import { getInvoiceForBuyer } from "@/lib/orders/invoice";
+import { claimantFrom } from "@/lib/orders/ownership";
 
 export const metadata: Metadata = { title: "Invoice" };
 
@@ -24,25 +26,29 @@ export default async function InvoicePage({
   const [{ orderId }, query] = await Promise.all([params, searchParams]);
   const session = await getSession();
 
-  // Same authorisation as the order page itself: by account, by the email the
+  // Same authorisation as the order page itself: by account, by the contact the
   // order was placed with, or by the signed token a guest arrives holding.
   // Not found rather than forbidden — confirming an order exists but is not
   // yours is a small leak with no upside.
   const invoice = await getInvoiceForBuyer({
     orderId,
-    userId: session?.user.id ?? null,
-    email: session?.user.email,
-    accessToken: query.t,
+    ...claimantFrom(session, query.t),
   });
 
   if (!invoice) notFound();
 
   return (
     <div className="pb-16">
+      {/*
+        Both links carry the token onward. A guest's authorisation is the URL
+        and nothing else, so a bare `/orders/{id}` sent them to a 404 on the
+        order they had open a moment earlier, and "Save as PDF" refused the
+        document already rendered on screen.
+      */}
       <InvoiceActions
-        backHref={`/orders/${orderId}`}
+        backHref={withAccessToken(`/orders/${orderId}`, query.t)}
         backLabel="Back to order"
-        pdfHref={`/orders/${orderId}/invoice/pdf`}
+        pdfHref={withAccessToken(`/orders/${orderId}/invoice/pdf`, query.t)}
       />
       <InvoiceDocument invoice={invoice} />
     </div>

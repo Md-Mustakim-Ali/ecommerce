@@ -78,3 +78,21 @@ export function verifyOrderAccess(
 export function orderPath(orderId: string): string {
   return `/orders/${orderId}?t=${signOrderAccess(orderId)}`;
 }
+
+/**
+ * Carries the token the current page was opened with onto the next one.
+ *
+ * A guest's authorisation lives entirely in the URL, so every link out of the
+ * order page has to hand it on or the destination refuses them. It did not:
+ * the invoice link, the invoice's own "Back to order", and "Save as PDF" all
+ * pointed at bare paths, so a guest who clicked Invoice on an order they were
+ * already looking at got a 404. Both endpoints had always accepted `?t=` —
+ * nothing ever passed it.
+ *
+ * Returns the path untouched when there is no token, which is the signed-in
+ * case: their session travels on its own.
+ */
+export function withAccessToken(path: string, token?: string | null): string {
+  if (!token) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}`;
+}

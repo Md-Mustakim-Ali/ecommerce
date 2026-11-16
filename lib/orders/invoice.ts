@@ -200,11 +200,19 @@ async function approvedRefundsBySubOrder(
  */
 export async function getInvoiceForBuyer(input: {
   orderId: string;
-  userId: string | null;
-  email?: string;
-  phone?: string;
+  /**
+   * The claimant, in the shape orderBelongsTo takes, so callers can build it
+   * with claimantFrom() rather than assembling one by hand. Both did, and both
+   * got it slightly wrong: they passed `session.user.email` raw, which is a
+   * placeholder address for a phone-only account, and never passed a phone at
+   * all — so a buyer who signed up with a number could open their order and
+   * then be refused its invoice.
+   */
+  userId?: string | null;
+  email?: string | null;
+  phone?: string | null;
   /** The `?t=` a guest arrives with. See lib/orders/access.ts. */
-  accessToken?: string;
+  accessToken?: string | null;
 }): Promise<Invoice | null> {
   const [order] = await db
     .select()

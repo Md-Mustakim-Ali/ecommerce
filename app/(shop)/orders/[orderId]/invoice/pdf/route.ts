@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth/guards";
 import { getInvoiceForBuyer } from "@/lib/orders/invoice";
 import { invoiceFilename, renderInvoicePdf } from "@/lib/orders/invoice-pdf";
+import { claimantFrom } from "@/lib/orders/ownership";
 
 /**
  * The buyer's invoice as a downloaded file.
@@ -23,11 +24,10 @@ export async function GET(
 
   const invoice = await getInvoiceForBuyer({
     orderId,
-    userId: session?.user.id ?? null,
-    email: session?.user.email,
-    // Carried through from the page's own URL, so a guest can download the
-    // invoice they can already see rather than being refused at the last step.
-    accessToken: new URL(request.url).searchParams.get("t") ?? undefined,
+    // The token is carried through from the page's own URL, so a guest can
+    // download the invoice they can already see rather than being refused at
+    // the last step.
+    ...claimantFrom(session, new URL(request.url).searchParams.get("t")),
   });
 
   // 404 rather than 403, matching the page: confirming an order exists but is
