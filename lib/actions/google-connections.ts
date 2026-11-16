@@ -4,19 +4,26 @@ import { and, count, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireStorePermission } from "@/lib/auth/access";
+import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import {
+  auditLog,
   productImages,
   storeGoogleAccounts,
   storeGoogleGrants,
   storeGoogleProjects,
 } from "@/lib/db/schema";
-import { encryptSecret } from "@/lib/media/crypto";
+import { encryptionConfigured, encryptSecret } from "@/lib/media/crypto";
 import { buildConsentUrl, signConnectState } from "@/lib/media/google/connect";
 import { DEFAULT_DAILY_UNIT_LIMIT, nextQuotaResetAt } from "@/lib/media/quota";
 
 /**
  * Managing a store's Google connections.
+ *
+ * Reads need media.connection.view, writes need media.connection.manage. The
+ * split matters because someone who uploads product photos has a real reason
+ * to see why an upload failed — "the Drive is full" — without also being able
+ * to disconnect the account and take every existing photo down with it.
  *
  * Two pools, added independently: Cloud projects supply YouTube quota, and
  * accounts supply Drive storage and the destination channel. They are joined
@@ -28,6 +35,29 @@ import { DEFAULT_DAILY_UNIT_LIMIT, nextQuotaResetAt } from "@/lib/media/quota";
 export type ConnectionResult =
   | { ok: true; message: string; redirectUrl?: string }
   | { ok: false; message: string };
+
+/**
+ * Refuses politely when the server cannot encrypt what it is about to store.
+ *
+ * Without GOOGLE_TOKEN_ENCRYPTION_KEY the write would throw from inside
+ * encryptSecret and take the page down with it, which tells a seller nothing
+ * they can act on. This is an operator problem and the message says so.
+ */
+const NOT_CONFIGURED =
+  "Media connections are not set up on this server yet. Ask whoever runs it to set GOOGLE_TOKEN_ENCRYPTION_KEY.";
+
+/**
+ * Who is doing this, for the audit trail.
+ *
+ * Snapshotted rather than joined at read time: the point of the log is to
+ * still answer "who disconnected the account" after that person has left the
+ * store and their membership row is gone.
+ */
+async function actor() {
+  const session = await getSession();
+  if (!session) return { id: null, email: null };
+  return { id: session.user.id, email: session.user.email };
+}
 
 /** The one URL every seller has to whitelist in their own Cloud project. */
 export async function googleRedirectUri(): Promise<string> {
@@ -53,7 +83,11 @@ export async function addGoogleProjectAction(
   }
   const data = parsed.data;
 
-  await requireStorePermission(data.storeId, "store.profile.update");
+  await requireStorePermission(data.storeId, "media.connection.manage");
+
+  if (!encryptionConfigured()) {
+    return { ok: false, message: NOT_CONFIGURED };
+  }
 
   // Google's client ids all carry this suffix. Catching it here saves the
   // seller a failed OAuth round trip to discover they pasted the project
@@ -88,15 +122,36 @@ export async function addGoogleProjectAction(
     .from(storeGoogleProjects)
     .where(eq(storeGoogleProjects.storeId, data.storeId));
 
-  await db.insert(storeGoogleProjects).values({
-    storeId: data.storeId,
-    label: data.label,
-    clientId: data.clientId,
-    clientSecretEnc: encryptSecret(data.clientSecret),
-    dailyUnitLimit: DEFAULT_DAILY_UNIT_LIMIT,
-    unitsUsed: 0,
-    unitsResetAt: nextQuotaResetAt(new Date()),
-    priority: projectCount,
+  const who = await actor();
+
+  await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(storeGoogleProjects)
+      .values({
+        storeId: data.storeId,
+        label: data.label,
+        clientId: data.clientId,
+        clientSecretEnc: encryptSecret(data.clientSecret),
+        dailyUnitLimit: DEFAULT_DAILY_UNIT_LIMIT,
+        unitsUsed: 0,
+        unitsResetAt: nextQuotaResetAt(new Date()),
+        priority: projectCount,
+      })
+      .returning({ id: storeGoogleProjects.id });
+
+    await tx.insert(auditLog).values({
+      storeId: data.storeId,
+      actorId: who.id,
+      actorEmail: who.email,
+      action: "media.project.add",
+      targetType: "google_project",
+      targetId: created.id,
+      targetLabel: data.label,
+      before: null,
+      // The client id only, never the secret. An audit log that leaks the
+      // credential it exists to protect is worse than none.
+      after: { label: data.label, clientId: data.clientId },
+    });
   });
 
   revalidatePath(`/dashboard/${data.storeId}/settings/media`);
@@ -118,18 +173,43 @@ export async function removeGoogleProjectAction(
   if (!parsed.success) return { ok: false, message: "Invalid request." };
   const data = parsed.data;
 
-  await requireStorePermission(data.storeId, "store.profile.update");
+  await requireStorePermission(data.storeId, "media.connection.manage");
+
+  const who = await actor();
 
   // Grants cascade. Media is unaffected: a project only ever supplied quota,
   // and the files themselves belong to the account.
-  await db
-    .delete(storeGoogleProjects)
-    .where(
-      and(
-        eq(storeGoogleProjects.id, data.projectId),
-        eq(storeGoogleProjects.storeId, data.storeId),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    const [removed] = await tx
+      .delete(storeGoogleProjects)
+      .where(
+        and(
+          eq(storeGoogleProjects.id, data.projectId),
+          eq(storeGoogleProjects.storeId, data.storeId),
+        ),
+      )
+      .returning({
+        id: storeGoogleProjects.id,
+        label: storeGoogleProjects.label,
+        clientId: storeGoogleProjects.clientId,
+      });
+
+    // Nothing deleted means it was already gone, or belongs to another store.
+    // Either way there is no event to record.
+    if (!removed) return;
+
+    await tx.insert(auditLog).values({
+      storeId: data.storeId,
+      actorId: who.id,
+      actorEmail: who.email,
+      action: "media.project.remove",
+      targetType: "google_project",
+      targetId: removed.id,
+      targetLabel: removed.label,
+      before: { label: removed.label, clientId: removed.clientId },
+      after: null,
+    });
+  });
 
   revalidatePath(`/dashboard/${data.storeId}/settings/media`);
   return { ok: true, message: "Project removed." };
@@ -158,11 +238,14 @@ export async function startAccountConnectionAction(
   if (!parsed.success) return { ok: false, message: "Invalid request." };
   const data = parsed.data;
 
-  await requireStorePermission(data.storeId, "store.profile.update");
+  await requireStorePermission(data.storeId, "media.connection.manage");
 
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret) {
     return { ok: false, message: "Server is missing BETTER_AUTH_SECRET." };
+  }
+  if (!encryptionConfigured()) {
+    return { ok: false, message: NOT_CONFIGURED };
   }
 
   const [project] = await db
@@ -221,7 +304,7 @@ export async function countMediaOnAccountAction(
   const parsed = removeAccountInput.safeParse(input);
   if (!parsed.success) return 0;
 
-  await requireStorePermission(parsed.data.storeId, "store.profile.update");
+  await requireStorePermission(parsed.data.storeId, "media.connection.manage");
 
   const [{ value }] = await db
     .select({ value: count() })
@@ -238,12 +321,14 @@ export async function removeGoogleAccountAction(
   if (!parsed.success) return { ok: false, message: "Invalid request." };
   const data = parsed.data;
 
-  await requireStorePermission(data.storeId, "store.profile.update");
+  await requireStorePermission(data.storeId, "media.connection.manage");
 
   const affected = await db
     .select({ id: productImages.id })
     .from(productImages)
     .where(eq(productImages.googleAccountId, data.accountId));
+
+  const who = await actor();
 
   // Media rows survive with google_account_id set to null — the FK is ON
   // DELETE SET NULL rather than CASCADE on purpose. Deleting them would
@@ -261,14 +346,35 @@ export async function removeGoogleAccountAction(
         .where(eq(productImages.googleAccountId, data.accountId));
     }
 
-    await tx
+    const [removed] = await tx
       .delete(storeGoogleAccounts)
       .where(
         and(
           eq(storeGoogleAccounts.id, data.accountId),
           eq(storeGoogleAccounts.storeId, data.storeId),
         ),
-      );
+      )
+      .returning({
+        id: storeGoogleAccounts.id,
+        email: storeGoogleAccounts.email,
+      });
+
+    if (!removed) return;
+
+    // The file count is the part that matters here. This is the one action in
+    // the store that can take live product photos down in bulk, and the log
+    // has to say how many rather than just that it happened.
+    await tx.insert(auditLog).values({
+      storeId: data.storeId,
+      actorId: who.id,
+      actorEmail: who.email,
+      action: "media.account.remove",
+      targetType: "google_account",
+      targetId: removed.id,
+      targetLabel: removed.email,
+      before: { email: removed.email },
+      after: { mediaHidden: affected.length },
+    });
   });
 
   revalidatePath(`/dashboard/${data.storeId}/settings/media`);
@@ -303,10 +409,14 @@ export async function reorderGoogleAccountsAction(
   if (!parsed.success) return { ok: false, message: "Invalid order." };
   const data = parsed.data;
 
-  await requireStorePermission(data.storeId, "store.profile.update");
+  await requireStorePermission(data.storeId, "media.connection.manage");
 
   const owned = await db
-    .select({ id: storeGoogleAccounts.id })
+    .select({
+      id: storeGoogleAccounts.id,
+      email: storeGoogleAccounts.email,
+      priority: storeGoogleAccounts.priority,
+    })
     .from(storeGoogleAccounts)
     .where(eq(storeGoogleAccounts.storeId, data.storeId));
 
@@ -318,6 +428,14 @@ export async function reorderGoogleAccountsAction(
     return { ok: false, message: "That ordering no longer matches." };
   }
 
+  const byId = new Map(owned.map((row) => [row.id, row.email]));
+  const previous = [...owned]
+    .sort((a, b) => a.priority - b.priority)
+    .map((row) => row.email);
+  const next = data.ids.map((id) => byId.get(id) ?? id);
+
+  const who = await actor();
+
   await db.transaction(async (tx) => {
     for (const [index, id] of data.ids.entries()) {
       await tx
@@ -325,6 +443,21 @@ export async function reorderGoogleAccountsAction(
         .set({ priority: index })
         .where(eq(storeGoogleAccounts.id, id));
     }
+
+    // Recorded by email rather than id: the first account in this list is the
+    // channel new videos land on, and "who moved my uploads to the other
+    // account" needs an answer that reads without a database lookup.
+    await tx.insert(auditLog).values({
+      storeId: data.storeId,
+      actorId: who.id,
+      actorEmail: who.email,
+      action: "media.account.reorder",
+      targetType: "google_account",
+      targetId: data.ids[0],
+      targetLabel: next[0],
+      before: { order: previous },
+      after: { order: next },
+    });
   });
 
   revalidatePath(`/dashboard/${data.storeId}/settings/media`);
@@ -362,7 +495,7 @@ export async function loadConnectionOverviewAction(
   storeId: string,
 ): Promise<ConnectionOverview> {
   const id = z.uuid().parse(storeId);
-  await requireStorePermission(id, "store.profile.update");
+  await requireStorePermission(id, "media.connection.view");
 
   const [projects, accounts, grants] = await Promise.all([
     db

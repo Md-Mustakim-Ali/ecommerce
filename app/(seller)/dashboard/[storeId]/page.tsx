@@ -61,6 +61,13 @@ const SECTIONS: {
     permission: "store.profile.update",
   },
   {
+    href: (id) => `/dashboard/${id}/settings/media`,
+    label: "Media connections",
+    description:
+      "The Google accounts and Cloud projects your photos and videos use.",
+    permission: "media.connection.view",
+  },
+  {
     href: (id) => `/dashboard/${id}/analytics`,
     label: "Analytics",
     description: "Trends, forecast, concentration and what to reorder.",

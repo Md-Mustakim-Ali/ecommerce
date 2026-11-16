@@ -62,11 +62,19 @@ export function MediaConnections({
   connectedEmail,
   callbackError,
   redirectUri,
+  canManage,
 }: {
   storeId: string;
   overview: ConnectionOverview;
   connectedEmail: string | null;
   callbackError: string | null;
+  /**
+   * Whether this person may change the pool, not merely look at it.
+   *
+   * The server enforces it either way; hiding the controls is so a viewer is
+   * not offered buttons that will refuse them.
+   */
+  canManage: boolean;
   /**
    * Resolved on the server, not from window.location.
    *
@@ -180,6 +188,13 @@ export function MediaConnections({
         </p>
       ) : null}
 
+      {canManage ? null : (
+        <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-secondary-text text-sm">
+          You can see these connections but not change them. That needs the
+          &ldquo;Manage media connections&rdquo; permission.
+        </p>
+      )}
+
       <div className="rounded-lg border border-border p-4">
         <p className="text-sm">
           <strong>{dailyUploads}</strong> video upload
@@ -278,15 +293,17 @@ export function MediaConnections({
                   >
                     {PROJECT_STATE_LABEL[project.state] ?? project.state}
                   </Badge>
-                  <button
-                    type="button"
-                    onClick={() => removeProject(project.id)}
-                    disabled={pending}
-                    aria-label={`Remove ${project.label}`}
-                    className="rounded p-1.5 text-muted-foreground hover:text-critical"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {canManage ? (
+                    <button
+                      type="button"
+                      onClick={() => removeProject(project.id)}
+                      disabled={pending}
+                      aria-label={`Remove ${project.label}`}
+                      className="rounded p-1.5 text-muted-foreground hover:text-critical"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -299,72 +316,76 @@ export function MediaConnections({
                 <p className="text-critical text-xs">{project.lastError}</p>
               ) : null}
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit gap-1.5"
-                disabled={pending}
-                onClick={() => connectAccount(project.id)}
-              >
-                <Link2 className="h-3.5 w-3.5" />
-                Connect a Google account through this project
-              </Button>
+              {canManage ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit gap-1.5"
+                  disabled={pending}
+                  onClick={() => connectAccount(project.id)}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  Connect a Google account through this project
+                </Button>
+              ) : null}
             </div>
           );
         })}
 
-        <div className="flex flex-col gap-3 rounded-lg border border-border border-dashed p-4">
-          <p className="font-medium text-sm">Add a project</p>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="project-label">Name</Label>
-            <Input
-              id="project-label"
-              value={form.label}
-              onChange={(event) =>
-                setForm({ ...form, label: event.target.value })
+        {canManage ? (
+          <div className="flex flex-col gap-3 rounded-lg border border-border border-dashed p-4">
+            <p className="font-medium text-sm">Add a project</p>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="project-label">Name</Label>
+              <Input
+                id="project-label"
+                value={form.label}
+                onChange={(event) =>
+                  setForm({ ...form, label: event.target.value })
+                }
+                placeholder="My shop's project"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="project-client-id">Client ID</Label>
+              <Input
+                id="project-client-id"
+                value={form.clientId}
+                onChange={(event) =>
+                  setForm({ ...form, clientId: event.target.value })
+                }
+                placeholder="…apps.googleusercontent.com"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="project-client-secret">Client secret</Label>
+              <Input
+                id="project-client-secret"
+                type="password"
+                value={form.clientSecret}
+                onChange={(event) =>
+                  setForm({ ...form, clientSecret: event.target.value })
+                }
+                placeholder="GOCSPX-…"
+              />
+              <p className="text-muted-foreground text-xs">
+                Encrypted before it is stored, and never shown again.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="w-fit gap-1.5"
+              disabled={
+                pending || !form.label || !form.clientId || !form.clientSecret
               }
-              placeholder="My shop's project"
-            />
+              onClick={addProject}
+            >
+              <Plus className="h-4 w-4" />
+              Add project
+            </Button>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="project-client-id">Client ID</Label>
-            <Input
-              id="project-client-id"
-              value={form.clientId}
-              onChange={(event) =>
-                setForm({ ...form, clientId: event.target.value })
-              }
-              placeholder="…apps.googleusercontent.com"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="project-client-secret">Client secret</Label>
-            <Input
-              id="project-client-secret"
-              type="password"
-              value={form.clientSecret}
-              onChange={(event) =>
-                setForm({ ...form, clientSecret: event.target.value })
-              }
-              placeholder="GOCSPX-…"
-            />
-            <p className="text-muted-foreground text-xs">
-              Encrypted before it is stored, and never shown again.
-            </p>
-          </div>
-          <Button
-            type="button"
-            className="w-fit gap-1.5"
-            disabled={
-              pending || !form.label || !form.clientId || !form.clientSecret
-            }
-            onClick={addProject}
-          >
-            <Plus className="h-4 w-4" />
-            Add project
-          </Button>
-        </div>
+        ) : null}
       </section>
 
       <Separator />
@@ -401,15 +422,17 @@ export function MediaConnections({
                 >
                   {ACCOUNT_STATE_LABEL[account.state] ?? account.state}
                 </Badge>
-                <button
-                  type="button"
-                  onClick={() => removeAccount(account.id, account.email)}
-                  disabled={pending}
-                  aria-label={`Disconnect ${account.email}`}
-                  className="rounded p-1.5 text-muted-foreground hover:text-critical"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() => removeAccount(account.id, account.email)}
+                    disabled={pending}
+                    aria-label={`Disconnect ${account.email}`}
+                    className="rounded p-1.5 text-muted-foreground hover:text-critical"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -434,7 +457,7 @@ export function MediaConnections({
                     <Badge key={project.id} variant="neutral">
                       {project.label}
                     </Badge>
-                  ) : (
+                  ) : !canManage ? null : (
                     <button
                       key={project.id}
                       type="button"

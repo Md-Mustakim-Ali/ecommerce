@@ -14,7 +14,7 @@
  * old key unused until every stored role has been migrated off it.
  */
 
-export const PERMISSION_VOCABULARY_VERSION = 2;
+export const PERMISSION_VOCABULARY_VERSION = 3;
 
 export type PermissionScope = "store" | "platform";
 
@@ -156,6 +156,27 @@ const STORE_PERMISSIONS = [
     group: "Storefront",
     label: "Edit store appearance",
     description: "Change logo, banner, accent colour and layout preset.",
+  },
+
+  // Media
+  //
+  // Separate from store.profile.update, which is what gated this before and
+  // was far too broad: connecting an account binds a real person's Google
+  // Drive and YouTube channel to the store, and that is not the same power as
+  // renaming the shop.
+  {
+    key: "media.connection.view",
+    group: "Media",
+    label: "View media connections",
+    description:
+      "See which Google accounts and Cloud projects the store's photos and videos use, and how much upload quota is left.",
+  },
+  {
+    key: "media.connection.manage",
+    group: "Media",
+    label: "Manage media connections",
+    description:
+      "Add Cloud projects, connect and disconnect Google accounts. Disconnecting an account hides every photo and video stored on it.",
   },
 
   // Staff

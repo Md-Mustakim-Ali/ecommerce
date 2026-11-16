@@ -28,6 +28,7 @@ export default async function StoreSettingsPage({
 
   const canProfile = access.permissions.has("store.profile.update");
   const canTheme = access.permissions.has("store.theme.update");
+  const canMedia = access.permissions.has("media.connection.view");
   if (!canProfile && !canTheme) notFound();
 
   const store = await db.query.stores.findFirst({
@@ -86,6 +87,26 @@ export default async function StoreSettingsPage({
         canProfile={canProfile}
         canTheme={canTheme}
       />
+
+      {/* Media connections live on their own page — they are a list that grows
+          rather than a form — but this is where someone looks for them. */}
+      {canMedia ? (
+        <Link
+          href={`/dashboard/${storeId}/settings/media`}
+          className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-1 p-5 transition-colors hover:border-accent"
+        >
+          <span className="flex flex-col gap-1">
+            <span className="font-medium text-sm">Media connections</span>
+            <span className="text-secondary-text text-sm">
+              The Google accounts and Cloud projects your product photos and
+              videos are stored on.
+            </span>
+          </span>
+          <span aria-hidden className="text-secondary-text">
+            →
+          </span>
+        </Link>
+      ) : null}
 
       {/* Identity, not permission. A manager holding every permission still
           does not see this. */}

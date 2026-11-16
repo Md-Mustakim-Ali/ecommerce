@@ -53,6 +53,11 @@ export const STORE_ROLE_TEMPLATES: readonly SystemRole[] = [
       "customer.contact",
       "store.profile.update",
       "store.theme.update",
+      // Media connections used to ride on store.profile.update. Splitting them
+      // into their own keys would have quietly demoted every Manager, so they
+      // are listed explicitly to keep the role doing what its name promises.
+      "media.connection.view",
+      "media.connection.manage",
       "attribute.propose",
       "page.view",
       "page.create",

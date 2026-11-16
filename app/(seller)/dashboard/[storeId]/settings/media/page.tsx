@@ -5,6 +5,7 @@ import {
   loadConnectionOverviewAction,
 } from "@/lib/actions/google-connections";
 import { getStoreAccess } from "@/lib/auth/access";
+import { encryptionConfigured } from "@/lib/media/crypto";
 import { MediaConnections } from "./connections";
 
 export const metadata: Metadata = { title: "Media connections" };
@@ -12,10 +13,11 @@ export const metadata: Metadata = { title: "Media connections" };
 /**
  * Where a seller connects the Google capacity their media runs on.
  *
- * Gated on store.profile.update rather than a product permission: connecting
- * an account here decides where every photo and video in the shop is stored
- * and which channel hosts them, which is a store-level decision rather than a
- * catalogue one.
+ * Two permissions, not one. Viewing the pool answers "why did my upload
+ * fail", which anyone adding product media needs; managing it binds a real
+ * person's Drive and YouTube channel to the store and can hide every asset
+ * already stored on an account. Those are different powers and a shop owner
+ * should be able to hand out the first without the second.
  */
 export default async function MediaSettingsPage({
   params,
@@ -26,7 +28,8 @@ export default async function MediaSettingsPage({
 
   const access = await getStoreAccess(storeId);
   if (!access || access.membershipStatus === "none") notFound();
-  if (!access.permissions.has("store.profile.update")) notFound();
+  if (!access.permissions.has("media.connection.view")) notFound();
+  const canManage = access.permissions.has("media.connection.manage");
 
   const [overview, redirectUri] = await Promise.all([
     loadConnectionOverviewAction(storeId),
@@ -35,6 +38,8 @@ export default async function MediaSettingsPage({
 
   // The OAuth callback cannot render anything itself — it is a redirect — so
   // it hands its outcome back through the query string.
+  const configured = encryptionConfigured();
+
   const connected =
     typeof query.connected === "string" ? query.connected : null;
   const error = typeof query.error === "string" ? query.error : null;
@@ -51,12 +56,23 @@ export default async function MediaSettingsPage({
         </p>
       </div>
 
+      {configured ? null : (
+        <p
+          role="alert"
+          className="rounded-md border border-critical/30 bg-critical-muted px-3 py-2 text-sm"
+        >
+          This server has no media encryption key set, so connections cannot be
+          saved yet. Whoever runs it needs to set GOOGLE_TOKEN_ENCRYPTION_KEY.
+        </p>
+      )}
+
       <MediaConnections
         storeId={storeId}
         overview={overview}
         connectedEmail={connected}
         callbackError={error}
         redirectUri={redirectUri}
+        canManage={canManage}
       />
     </div>
   );

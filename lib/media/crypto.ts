@@ -57,6 +57,20 @@ export function resetEncryptionKeyCache(): void {
 }
 
 /**
+ * Whether this deployment can store a Google connection at all.
+ *
+ * Callers check this before touching a form rather than letting key() throw.
+ * A missing environment variable is an operator problem, and surfacing it as a
+ * crashed page tells the seller nothing they can act on — they need "this is
+ * not set up yet", not a stack trace.
+ */
+export function encryptionConfigured(): boolean {
+  const raw = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
+  if (!raw) return false;
+  return Buffer.from(raw, "base64").length === KEY_BYTES;
+}
+
+/**
  * Returns `v1.<base64(iv || tag || ciphertext)>`.
  *
  * The version prefix is what makes key rotation possible later without having
