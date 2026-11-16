@@ -21,8 +21,12 @@
 > in substance and wrong in scope: it was not the delivery worker specifically,
 > it was every scheduled job.
 >
-> **Still open:** the possibility that test cleanup deletes real intents — see
-> the note at the end of this file.
+> **Follow-up closed 2026-09-10.** Test cleanup does *not* delete real intents.
+> Every cleanup in that repo keys on a fixture it created; the one unscoped
+> delete is `db.delete(jobRuns)` in the scheduler-health test, which touches no
+> payment data. The intents were lost to `pnpm db:reset` — the Docker volume is
+> younger than the intents it was supposed to contain, so they were never
+> carried across, not deleted by a predicate. See the note at the end.
 
 Copy everything below the line into the agent working on the Jomma server
 (`github.com/TahsinFaiyaz30/jomma`). It is written to stand alone — it does not
@@ -164,9 +168,43 @@ comment.
 
 ---
 
-## Follow-up: does test cleanup delete *real* intents?
+## Follow-up: does test cleanup delete *real* intents? — ANSWERED, no
 
-Raised after the fixes above landed. Not yet investigated.
+Raised after the fixes above landed. Investigated 2026-09-10; the hypothesis
+below is **refuted**.
+
+The database is younger than the intents. The `jomma_pgdata` volume was created
+`2026-09-07T22:57:47Z`; `int_01M1YDP4X0ENS81N4A5TN2MDT8` carries a ULID
+timestamp of `17:12:07` the same day — five and three-quarter hours earlier. So
+`pnpm db:reset` destroyed the volume and the intents were never carried across,
+rather than being deleted by a broad predicate. `payment_audit.intent_id` is
+`ON DELETE SET NULL` and agrees: the 19 orphaned rows match tests deleting
+their own fixtures, and nothing this shop created after the reset is missing.
+
+Every cleanup was checked. Nine tests delete `payment_intents`, all keyed on an
+`app_id`, `receiving_account_id` or `client_reference` they created themselves.
+The single unscoped delete in the repository is `db.delete(jobRuns)` in the
+scheduler-health test, which empties `job_runs` — not payment data, but it does
+leave `getSchedulerHealth()` reporting `neverRun: true` on an instance where
+the worker demonstrably ran, i.e. the suite can manufacture the exact false
+alarm the check exists to raise.
+
+**Separate and more urgent for local development:** the endpoint registered on
+the local Jomma instance is `http://localhost:4000/webhooks/jomma`. This shop
+listens on `http://localhost:3300/api/webhooks/jomma` — wrong port *and* wrong
+path. Both deliveries sit `status: failed, attempts: 0`, refused by the SSRF
+guard before any request was made, with `next_attempt_at` null so they will
+never retry. Local webhook delivery has therefore never worked, and anything
+that appeared to settle locally did so through the `syncOrderPayment` poll.
+
+That failure is also reported to an operator as `failedDeliveries`, phrased as
+"given up after every retry" — the wrong sentence for a delivery nothing ever
+attempted, and it points the reader at their own endpoint instead of at the
+registered URL.
+
+---
+
+The original hypothesis, kept for the record:
 
 The reason finding #2 could not be proved was that the matched intent no longer
 exists. That may not be incidental — it may have been deleted by a test run.
