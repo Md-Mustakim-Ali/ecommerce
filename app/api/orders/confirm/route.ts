@@ -17,11 +17,28 @@ import { confirmedPath, confirmOrder } from "@/lib/orders/confirmation";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function fail(request: Request, reason: string) {
+/**
+ * The public origin, NOT `request.url`.
+ *
+ * Behind Render's proxy the request arrives at the container as
+ * `http://localhost:10000/...`, so `new URL(path, request.url)` resolved
+ * against localhost and every confirmation link redirected the buyer to a dead
+ * address on their own machine. The order was confirmed and the page they
+ * landed on did not exist.
+ *
+ * BETTER_AUTH_URL is the canonical public origin and is already required to be
+ * exact — Better Auth compares request origins against it — so it is the one
+ * value that cannot quietly be the internal one.
+ */
+function publicUrl(path: string): URL {
+  return new URL(path, (process.env.BETTER_AUTH_URL ?? "").replace(/\/$/, ""));
+}
+
+function fail(reason: string) {
   // Deliberately vague and deliberately not a 404 page: the buyer here is
   // somebody whose link expired or was mangled by a mail client, and the only
   // useful thing to do is tell them so where they can read it.
-  const url = new URL("/orders/expired", request.url);
+  const url = publicUrl("/orders/expired");
   url.searchParams.set("reason", reason);
   return NextResponse.redirect(url);
 }
@@ -31,13 +48,11 @@ export async function GET(request: Request) {
   const orderId = params.get("id");
   const token = params.get("t") ?? undefined;
 
-  if (!orderId) return fail(request, "missing");
+  if (!orderId) return fail("missing");
 
   const result = await confirmOrder(orderId, token);
 
-  if (!result.ok) return fail(request, result.reason);
+  if (!result.ok) return fail(result.reason);
 
-  return NextResponse.redirect(
-    new URL(confirmedPath(result.orderId), request.url),
-  );
+  return NextResponse.redirect(publicUrl(confirmedPath(result.orderId)));
 }
