@@ -5,6 +5,7 @@ import {
   Package,
   Phone,
   Receipt,
+  Wallet,
 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -19,6 +20,7 @@ import {
   getAppliedPaymentsForOrder,
   getOrderForBuyer,
 } from "@/lib/orders/queries";
+import { displayPhone } from "@/lib/validation/phone";
 import { DemoPayButton } from "./demo-pay";
 import { MessageThread } from "./message-thread";
 import { PaymentStatus } from "./payment-status";
@@ -69,6 +71,51 @@ export default async function OrderPage({
 
   // Every transfer Jomma applied. More than one is a split payment.
   const appliedPayments = await getAppliedPaymentsForOrder(order.id);
+
+  /*
+    The number the money actually came from.
+
+    Jomma prefills the checkout phone on its pay page and then lets the buyer
+    say "use a different number", so this is routinely not the contact on the
+    order — it is whichever handset bKash was open on. That makes it the one
+    detail neither side can reconstruct later, and the first thing both reach
+    for when a payment is disputed.
+
+    One intent takes one sending number, but it can take several transfers from
+    it, so the same number appears once per transfer. Deduplicated for that —
+    not because a split can arrive from two handsets. Normalised because Jomma
+    reports `8801771104100` where the rest of this page says `01771104100`.
+  */
+  const payingNumbers = [
+    ...new Set(
+      appliedPayments
+        .map((payment) => payment.senderMsisdn)
+        .filter((msisdn): msisdn is string => Boolean(msisdn))
+        .map(displayPhone),
+    ),
+  ];
+
+  /*
+    What the transfers add up to, against what the order costs.
+
+    A split payment is the case this exists for: Jomma keeps one intent open
+    across several transfers, so the buyer who sends half now and half later is
+    doing something supported, not something broken. Listing the transfers
+    without reconciling them left the buyer to add up their own payments to
+    find out whether they still owed anything — and a shortfall is precisely
+    when they need to be told, because the order does not ship until it is
+    covered.
+
+    Both directions matter. Over is not a rounding curiosity: it is money of
+    theirs we are holding, and saying so on the order is the difference between
+    a refund we offer and one they have to chase.
+  */
+  const receivedCents = appliedPayments.reduce(
+    (total, payment) => total + payment.amountCents,
+    0,
+  );
+  const shortfallCents = Math.max(0, order.totalCents - receivedCents);
+  const excessCents = Math.max(0, receivedCents - order.totalCents);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6">
@@ -277,10 +324,10 @@ export default async function OrderPage({
 
         Rendered as a list because a payment is not always one transfer. Somebody
         who sends part of the total and tops it up later produces two, each with
-        its own TrxID and each possibly from a different handset — Jomma applies
-        both to the same intent and reports both. Showing only the last one would
-        hide half of what the buyer sent, and the TrxID is the first thing either
-        side reaches for when a payment is disputed.
+        its own TrxID and its own amount — Jomma holds the one intent open and
+        applies both. Showing only the last one would hide half of what the
+        buyer sent, and the TrxID is the first thing either side reaches for
+        when a payment is disputed.
       */}
       {appliedPayments.length > 0 ? (
         <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-1 p-5">
@@ -305,7 +352,7 @@ export default async function OrderPage({
                   </span>
                   <span className="text-tertiary-text text-xs">
                     {payment.senderMsisdn
-                      ? `From ${payment.senderMsisdn} · `
+                      ? `From ${displayPhone(payment.senderMsisdn)} · `
                       : ""}
                     {(payment.occurredAt ?? payment.appliedAt).toLocaleString()}
                     {/* `manual` and `admin` mean a human resolved this rather
@@ -322,21 +369,50 @@ export default async function OrderPage({
             ))}
           </ul>
 
-          {appliedPayments.length > 1 ? (
+          {/*
+            Shown for a split, and for anything that does not add up to the
+            total. A single transfer covering the order exactly needs no
+            summary — it is the line directly above.
+          */}
+          {appliedPayments.length > 1 ||
+          shortfallCents > 0 ||
+          excessCents > 0 ? (
             <>
               <Separator />
               <div className="flex justify-between text-sm">
-                <span className="text-secondary-text">Total received</span>
+                <span className="text-secondary-text">
+                  Total received
+                  {appliedPayments.length > 1
+                    ? ` · ${appliedPayments.length} transfers`
+                    : ""}
+                </span>
                 <span className="tabular font-medium">
-                  {formatMoney(
-                    appliedPayments.reduce(
-                      (total, payment) => total + payment.amountCents,
-                      0,
-                    ),
-                    order.currency,
-                  )}
+                  {formatMoney(receivedCents, order.currency)}
                 </span>
               </div>
+
+              {shortfallCents > 0 ? (
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium">Still to pay</span>
+                  <span className="tabular font-semibold">
+                    {formatMoney(shortfallCents, order.currency)}
+                  </span>
+                </div>
+              ) : null}
+
+              {/*
+                Deliberately worded as a debt of ours. "Overpaid" alone reads
+                like a mistake the buyer made; what it actually describes is
+                money of theirs that we are holding.
+              */}
+              {excessCents > 0 ? (
+                <div className="flex justify-between text-sm text-positive">
+                  <span className="font-medium">We owe you back</span>
+                  <span className="tabular font-semibold">
+                    {formatMoney(excessCents, order.currency)}
+                  </span>
+                </div>
+              ) : null}
             </>
           ) : null}
         </section>
@@ -360,26 +436,49 @@ export default async function OrderPage({
             <h3 className="text-tertiary-text text-xs uppercase tracking-wide">
               Contact
             </h3>
-            <dl className="flex flex-col gap-1.5 text-secondary-text">
+            {/*
+              Every row labelled. The icons carry the meaning at a glance, but
+              "another Bangladeshi mobile number" is genuinely ambiguous without
+              a word next to it — the whole point of showing the paying number
+              is that it is a *different* number from the contact one.
+            */}
+            <dl className="flex flex-col gap-2 text-secondary-text">
               {/* An order carries an email, a phone, or both — the schema's
                   check constraint requires at least one, never neither. */}
               {order.email ? (
-                <div className="flex items-start gap-2">
-                  <Mail className="mt-0.5 size-4 shrink-0" aria-hidden />
-                  <dd className="min-w-0 break-words">{order.email}</dd>
-                </div>
+                <DetailRow icon={<Mail aria-hidden className="size-4" />}>
+                  <dt className="text-tertiary-text text-xs">Email</dt>
+                  <dd className="break-words">{order.email}</dd>
+                </DetailRow>
               ) : null}
+
               {order.contactPhone ? (
-                <div className="flex items-start gap-2">
-                  <Phone className="mt-0.5 size-4 shrink-0" aria-hidden />
-                  <dd className="min-w-0">{order.contactPhone}</dd>
-                </div>
+                <DetailRow icon={<Phone aria-hidden className="size-4" />}>
+                  <dt className="text-tertiary-text text-xs">Phone</dt>
+                  <dd>{displayPhone(order.contactPhone)}</dd>
+                </DetailRow>
+              ) : null}
+
+              {/*
+                One row, however many transfers, because an intent takes one
+                sending number — a split is several amounts from that same
+                number, not several handsets. Still rendered from the list
+                rather than `[0]`: if two ever did appear, showing one of them
+                under a confident label would be the worst of both.
+              */}
+              {payingNumbers.length > 0 ? (
+                <DetailRow icon={<Wallet aria-hidden className="size-4" />}>
+                  <dt className="text-tertiary-text text-xs">Paid from</dt>
+                  {payingNumbers.map((msisdn) => (
+                    <dd key={msisdn}>{msisdn}</dd>
+                  ))}
+                </DetailRow>
               ) : null}
             </dl>
             {order.shippingAddress.phone &&
             order.shippingAddress.phone !== order.contactPhone ? (
               <p className="text-tertiary-text text-xs">
-                Delivery number {order.shippingAddress.phone}
+                Delivery number {displayPhone(order.shippingAddress.phone)}
               </p>
             ) : null}
           </div>
@@ -436,6 +535,29 @@ export default async function OrderPage({
           Continue shopping
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * A labelled line in the Details section.
+ *
+ * The icon is decorative — the `<dt>` beside it is what a screen reader
+ * announces, so the row is not "an icon, then a number with no indication of
+ * which number it is". That matters most on the paying number, whose entire
+ * reason for being on the page is that it differs from the contact one.
+ */
+function DetailRow({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="mt-0.5 shrink-0 text-tertiary-text">{icon}</span>
+      <div className="flex min-w-0 flex-col">{children}</div>
     </div>
   );
 }

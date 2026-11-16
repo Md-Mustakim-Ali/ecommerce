@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDeliverablePhone, normaliseBdMobile } from "./phone";
+import { displayPhone, isDeliverablePhone, normaliseBdMobile } from "./phone";
 
 /**
  * The delivery phone rule.
@@ -79,5 +79,29 @@ describe("isDeliverablePhone", () => {
   it("is case- and whitespace-insensitive about the country", () => {
     expect(isDeliverablePhone("0171", "bd")).toBe(false);
     expect(isDeliverablePhone("01712345678", " bd ")).toBe(true);
+  });
+});
+
+/**
+ * Jomma reports the paying number in country-coded form while everything the
+ * buyer typed is stored locally, so one order page was showing the same
+ * handset as `8801771104100` in the payment breakdown and `01771104100` in the
+ * contact details.
+ */
+describe("displayPhone", () => {
+  it("shows a country-coded sender the way the rest of the page writes it", () => {
+    expect(displayPhone("8801771104100")).toBe("01771104100");
+    expect(displayPhone("+8801771104100")).toBe("01771104100");
+  });
+
+  it("leaves an already-local number alone", () => {
+    expect(displayPhone("01771104100")).toBe("01771104100");
+  });
+
+  // A foreign sender is still worth showing exactly as it arrived, rather than
+  // blanked for failing a numbering plan it was never meant to match.
+  it("passes through anything that is not a BD mobile", () => {
+    expect(displayPhone("+14155550123")).toBe("+14155550123");
+    expect(displayPhone("unknown")).toBe("unknown");
   });
 });

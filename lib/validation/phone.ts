@@ -36,6 +36,23 @@ export function normaliseBdMobile(input: string): string | null {
 }
 
 /**
+ * How a number should read on screen.
+ *
+ * Jomma reports the paying number as `8801771104100`. That is correct and it is
+ * not how anybody in Dhaka writes a phone number — and everything the buyer
+ * typed is stored as `01771104100`, so an order page showing both forms was
+ * inviting the reader to wonder whether they were looking at two numbers or
+ * one. They were looking at one.
+ *
+ * Anything that is not a BD mobile comes back untouched. A foreign sender is
+ * still worth showing exactly as it arrived rather than hidden for failing a
+ * pattern it was never meant to match.
+ */
+export function displayPhone(phone: string): string {
+  return normaliseBdMobile(phone) ?? phone;
+}
+
+/**
  * Whether a phone is acceptable as a delivery number for a given country.
  *
  * Format is only enforced for Bangladesh, which is the one numbering plan this
