@@ -50,6 +50,12 @@ import { orderBelongsTo } from "./ownership";
  */
 
 export type PaymentState =
+  /**
+   * A guest order awaiting proof of the contact it was placed with. It has an
+   * invoice because the buyer can see the order — but nothing has been sold
+   * yet, and no seller has been told about it.
+   */
+  | "unconfirmed"
   | "pending"
   | "paid"
   | "partially_fulfilled"

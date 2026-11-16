@@ -8,9 +8,14 @@ import { getCart, getOrCreateCartId } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
 import { resolveDiscountForCart } from "@/lib/discounts/resolve";
+import { sendOrderPlaced } from "@/lib/email/notify";
 import { env } from "@/lib/env";
 import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { orderPath, signOrderAccess } from "@/lib/orders/access";
+import {
+  needsConfirmation,
+  sendConfirmationRequest,
+} from "@/lib/orders/confirmation";
 import { placeOrder } from "@/lib/orders/create";
 import { paymentProvider } from "@/lib/payments";
 import { jommaConfigured } from "@/lib/payments/jomma/client";
@@ -128,6 +133,14 @@ export type CheckoutResult =
        * what guest checkout cannot afford. See lib/orders/access.ts.
        */
       accessToken: string;
+      /**
+       * The order is placed but not real yet — a link went to the contact the
+       * buyer gave and it counts once they follow it. The form says so rather
+       * than dropping them on an order page that reads as confirmed.
+       */
+      awaitingConfirmation: boolean;
+      /** Where the confirmation link was sent, so the message can name it. */
+      confirmationSentTo: string | null;
       /** Present when the provider needs the buyer to do something. */
       redirectUrl?: string;
       settlesOffline: boolean;
@@ -220,11 +233,43 @@ export async function placeOrderAction(
     };
   }
 
+  /**
+   * Whether this order has to be proved before it counts as a sale.
+   *
+   * A signed-in buyer with a verified contact skips it — they proved it once
+   * and doing it per order would be theatre. So does any order whose contact
+   * no configured channel can reach, because gating an order nobody can
+   * confirm just means refusing to sell.
+   */
+  const gated =
+    /**
+     * Only the offline method. Both are open to guests — a guest can pay by
+     * bKash or Nagad exactly as before — but paying is stronger proof than
+     * clicking a link, so an order that is about to be paid for needs no
+     * separate confirmation, and cash on delivery is where a fabricated
+     * address actually costs a seller a parcel.
+     *
+     * This is also load-bearing rather than a nicety. Every money path gates
+     * on `pending`: recordOrderPaid, the Jomma sync and both webhook branches
+     * all refuse an order that is not. Holding a prepaid order at
+     * `unconfirmed` would mean the buyer pays and the webhook silently drops
+     * the settlement.
+     */
+    parsed.data.paymentMethod === "manual" &&
+    needsConfirmation({
+      email: contactEmail,
+      contactPhone,
+      buyerVerified: Boolean(
+        session?.user.emailVerified || session?.user.phoneNumberVerified,
+      ),
+    });
+
   const result = await placeOrder({
     cartId,
     buyerId: session?.user.id ?? null,
     email: contactEmail,
     contactPhone,
+    status: gated ? "unconfirmed" : "pending",
     shippingAddress: parsed.data.shippingAddress,
     currency: CURRENCY,
     shippingCents,
@@ -234,6 +279,22 @@ export async function placeOrderAction(
   });
 
   if (!result.ok) return { ok: false, message: result.message };
+
+  /**
+   * Either ask the buyer to prove their contact, or tell them we have it.
+   *
+   * Both are awaited and neither is allowed to fail the order: sendEmail and
+   * sendSms swallow and log their own errors, and a placed order must not come
+   * apart because a provider had a bad minute.
+   */
+  if (gated) {
+    await sendConfirmationRequest(result.orderId);
+  } else {
+    await sendOrderPlaced(
+      result.orderId,
+      parsed.data.paymentMethod === "manual",
+    );
+  }
 
   // ── bKash / Nagad, via Jomma ───────────────────────────────────────────
   //
@@ -309,6 +370,8 @@ export async function placeOrderAction(
       orderId: result.orderId,
       orderNumber: result.orderNumber,
       accessToken: signOrderAccess(result.orderId),
+      awaitingConfirmation: gated,
+      confirmationSentTo: gated ? (contactEmail ?? contactPhone) : null,
       redirectUrl: started.payUrl,
       // Nothing about landing back on returnUrl means paid. Only the webhook
       // moves this order, which is why the buyer lands on a waiting page.
@@ -341,6 +404,8 @@ export async function placeOrderAction(
     orderId: result.orderId,
     orderNumber: result.orderNumber,
     accessToken: signOrderAccess(result.orderId),
+    awaitingConfirmation: gated,
+    confirmationSentTo: gated ? (contactEmail ?? contactPhone) : null,
     redirectUrl: intent.redirectUrl,
     settlesOffline: provider.settlesOffline,
   };

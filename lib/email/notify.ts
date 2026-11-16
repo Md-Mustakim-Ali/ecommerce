@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { orderItems, orders, subOrders } from "@/lib/db/schema";
 import { sendEmail } from "./index";
-import { orderConfirmation } from "./templates";
+import { orderConfirmation, orderPlaced } from "./templates";
 
 /**
  * Notifications that more than one caller needs to send.
@@ -15,6 +15,51 @@ import { orderConfirmation } from "./templates";
  * caller assembling the lines itself is a caller that can assemble them wrong,
  * and a receipt that disagrees with the order is worse than no receipt.
  */
+
+/**
+ * Sends the "we have your order" note, at placement.
+ *
+ * Every other message here fires on a payment event, which left a gap wide
+ * enough to lose a buyer in: `manual` — pay on delivery or bank transfer — is
+ * the default method and the usual one here, so an order sits pending for days
+ * and nothing was ever sent. The only copy of the signed order link was the
+ * confirmation page shown once after checkout, so a guest who closed that tab
+ * could not reach their own order again.
+ *
+ * Deliberately quiet about accounts. Somebody who wants one can make one; that
+ * is its own flow with its own verification.
+ */
+export async function sendOrderPlaced(
+  orderId: string,
+  settlesOffline: boolean,
+): Promise<void> {
+  const [order] = await db
+    .select({
+      id: orders.id,
+      email: orders.email,
+      orderNumber: orders.orderNumber,
+      totalCents: orders.totalCents,
+      currency: orders.currency,
+    })
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  // A buyer who checked out with a number alone has nothing to email. The
+  // order page still works from the link they were just shown.
+  if (!order?.email) return;
+
+  await sendEmail(
+    orderPlaced({
+      to: order.email,
+      orderNumber: order.orderNumber,
+      orderId: order.id,
+      currency: order.currency,
+      totalCents: order.totalCents,
+      settlesOffline,
+    }),
+  );
+}
 
 /**
  * Sends the order confirmation.

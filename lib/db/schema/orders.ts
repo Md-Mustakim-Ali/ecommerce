@@ -17,6 +17,24 @@ import { productVariants } from "./catalog";
 import { stores } from "./stores";
 
 export const orderStatus = pgEnum("order_status", [
+  /**
+   * Placed, but the buyer has not proved the contact they gave.
+   *
+   * A guest checkout is an unauthenticated stranger typing an address and a
+   * phone number, and on a cash-on-delivery marketplace a fabricated one costs
+   * the seller a real parcel and a real return. So an order from a guest whose
+   * contact *can* be verified starts here and becomes `pending` when they
+   * follow the link sent to it.
+   *
+   * Deliberately not shown to sellers — see listOrdersForStore. An order in
+   * this state is a claim, not yet a sale.
+   *
+   * It still holds stock, matching how an unpaid `pending` order behaves: the
+   * alternative is telling a buyer their order is confirmed and then that it
+   * is not. The sweep releases it, exactly as Jomma's TTL does for unpaid
+   * ones.
+   */
+  "unconfirmed",
   "pending",
   "paid",
   "partially_fulfilled",

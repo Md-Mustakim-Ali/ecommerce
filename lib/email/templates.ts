@@ -77,6 +77,112 @@ export type OrderLine = {
   lineTotalCents: number;
 };
 
+/**
+ * Asks a guest to prove the contact they checked out with.
+ *
+ * The order exists but is `unconfirmed` and invisible to the seller until this
+ * link is followed. That is the point: on a cash-on-delivery marketplace a
+ * fabricated address costs the seller a parcel and a return, and a guest
+ * checkout is a stranger typing one.
+ *
+ * The link lands on the order itself, signed, so following it both confirms
+ * the order and gives them somewhere to look at it — with no account, ever.
+ * Nothing here suggests registering: somebody who wants an account can make
+ * one, and that is its own flow with its own verification.
+ */
+export function confirmOrderRequest(input: {
+  to: string;
+  orderNumber: string;
+  currency: string;
+  totalCents: number;
+  url: string;
+}): EmailMessage {
+  return {
+    to: input.to,
+    subject: `Confirm your order ${input.orderNumber}`,
+    text: [
+      `Almost done — order ${input.orderNumber} needs one click.`,
+      "",
+      `Total: ${formatMoney(input.totalCents, input.currency)}`,
+      "",
+      "We hold it for 24 hours. Confirm here and we will start packing:",
+      input.url,
+      "",
+      "The same link opens your order any time. No account needed.",
+      "",
+      "If you did not place this order, ignore this — nothing happens without it.",
+    ].join("\n"),
+    html: shell(
+      "One click to confirm",
+      `<p style="margin:0 0 8px;font-size:15px;">Order <strong>${html(input.orderNumber)}</strong> is waiting on you.</p>
+<p style="margin:0 0 16px;font-size:15px;">Total ${formatMoney(input.totalCents, input.currency)}</p>
+<p style="margin:0 0 16px;font-size:14px;color:#3f4750;">We hold it for 24 hours. Confirm and we will start packing.</p>
+${button(input.url, "Confirm my order")}
+<p style="margin:16px 0 0;font-size:13px;color:#6b7683;">The same link opens your order any time — no account needed. If you did not place this order, ignore this; nothing happens without it.</p>`,
+    ),
+    replyTo: env.EMAIL_REPLY_TO ?? env.EMAIL_FROM,
+  };
+}
+
+/**
+ * Sent the moment an order is placed, before any money has moved.
+ *
+ * Distinct from orderConfirmation, which means "we have your payment". Both
+ * exist because on this platform they are usually days apart: `manual` — pay
+ * on delivery or bank transfer — is the default method and the common one
+ * here, so an order sits pending while the buyer arranges payment.
+ *
+ * Without this the buyer had nothing. The order link is signed for this order
+ * (see lib/orders/access.ts), and until now the only copy of it was the
+ * confirmation page shown once after checkout: close that tab and a guest had
+ * no way back to their own order, and no email would arrive until payment.
+ *
+ * It deliberately does not mention accounts. A guest who wants one can make
+ * one, and that is its own flow with its own verification — pushing somebody
+ * to register in the middle of a purchase they have already completed is how
+ * a receipt turns into marketing.
+ */
+export function orderPlaced(input: {
+  to: string;
+  orderNumber: string;
+  orderId: string;
+  currency: string;
+  totalCents: number;
+  /** Whether the buyer still has to send money, which changes what to say. */
+  settlesOffline: boolean;
+}): EmailMessage {
+  const url = `${baseUrl()}${orderPath(input.orderId)}`;
+
+  const next = input.settlesOffline
+    ? "We will confirm your payment before dispatch. Nothing else is needed from you right now."
+    : "We are checking your payment now. This page updates by itself once it clears.";
+
+  return {
+    to: input.to,
+    subject: `We have your order ${input.orderNumber}`,
+    text: [
+      `Thanks — order ${input.orderNumber} is placed.`,
+      "",
+      `Total: ${formatMoney(input.totalCents, input.currency)}`,
+      "",
+      next,
+      "",
+      `Check its status any time: ${url}`,
+      "",
+      "Keep this link. It opens your order without signing in.",
+    ].join("\n"),
+    html: shell(
+      `We have your order`,
+      `<p style="margin:0 0 8px;font-size:15px;">Order <strong>${html(input.orderNumber)}</strong> is placed.</p>
+<p style="margin:0 0 16px;font-size:15px;">Total ${formatMoney(input.totalCents, input.currency)}</p>
+<p style="margin:0 0 16px;font-size:14px;color:#3f4750;">${html(next)}</p>
+${button(url, "Check your order")}
+<p style="margin:16px 0 0;font-size:13px;color:#6b7683;">Keep this link — it opens your order without signing in.</p>`,
+    ),
+    replyTo: env.EMAIL_REPLY_TO ?? env.EMAIL_FROM,
+  };
+}
+
 export function orderConfirmation(input: {
   to: string;
   orderNumber: string;

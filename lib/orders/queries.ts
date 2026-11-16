@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   jommaAppliedPayments,
@@ -181,9 +181,20 @@ export async function listOrdersForStore(
     .from(subOrders)
     .innerJoin(orders, eq(orders.id, subOrders.orderId))
     .where(
-      status
-        ? and(eq(subOrders.storeId, storeId), eq(subOrders.status, status))
-        : eq(subOrders.storeId, storeId),
+      and(
+        eq(subOrders.storeId, storeId),
+        status ? eq(subOrders.status, status) : undefined,
+        /**
+         * An unconfirmed order is not a sale, and a seller must never see one.
+         *
+         * The filter is on the PARENT order rather than the sub-order, because
+         * sub_orders.status tracks fulfilment and stays `pending` either way.
+         * Without this the queue would show orders from guests who typed an
+         * address they do not hold — which is the exact thing confirmation
+         * exists to keep out of a seller's day.
+         */
+        ne(orders.status, "unconfirmed"),
+      ),
     )
     .orderBy(desc(orders.placedAt))
     .limit(100);

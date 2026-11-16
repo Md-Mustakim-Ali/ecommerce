@@ -145,6 +145,16 @@ export function CheckoutForm({
   const [pending, startTransition] = useTransition();
 
   /**
+   * Set when the order is placed but waiting on the buyer to prove their
+   * contact. The whole form is replaced, because there is nothing left to do
+   * on it and the only useful next action is in their inbox.
+   */
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState<{
+    orderNumber: string;
+    sentTo: string | null;
+  } | null>(null);
+
+  /**
    * Address selection.
    *
    * The saved default is preselected, which is what the old pre-fill did — the
@@ -291,12 +301,49 @@ export function CheckoutForm({
         return;
       }
 
+      // A gated order is not a sale yet. Dropping the buyer on an order page
+      // that reads as confirmed would be a lie, and they would never look for
+      // the email that makes it true.
+      if (result.awaitingConfirmation) {
+        setAwaitingConfirmation({
+          orderNumber: result.orderNumber,
+          sentTo: result.confirmationSentTo,
+        });
+        return;
+      }
+
       // The token comes back from the action because a guest has no session
       // and the confirmation page has nothing else to recognise them by.
       router.push(
         `/orders/${result.orderId}?placed=1&t=${encodeURIComponent(result.accessToken)}`,
       );
     });
+  }
+
+  if (awaitingConfirmation) {
+    return (
+      <div className="mx-auto flex max-w-md flex-col items-center gap-4 rounded-xl border border-border bg-surface-1 p-8 text-center">
+        <h2 className="font-semibold text-xl tracking-tight">
+          One more click and it is yours
+        </h2>
+        <p className="text-secondary-text text-sm">
+          Order {awaitingConfirmation.orderNumber} is reserved. We sent a
+          confirmation link
+          {awaitingConfirmation.sentTo ? (
+            <>
+              {" "}
+              to{" "}
+              <span className="font-medium">{awaitingConfirmation.sentTo}</span>
+            </>
+          ) : null}
+          . Open it and we will start packing.
+        </p>
+        <p className="text-tertiary-text text-xs">
+          We hold your items for 24 hours. Nothing has been charged, and the
+          same link opens your order later — no account needed.
+        </p>
+      </div>
+    );
   }
 
   return (

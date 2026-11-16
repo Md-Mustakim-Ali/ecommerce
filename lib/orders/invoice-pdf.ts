@@ -67,6 +67,7 @@ function fonts() {
 const BENGALI = /[ঀ-৿]/;
 
 const PAYMENT_LABEL: Record<PaymentState, string> = {
+  unconfirmed: "NOT CONFIRMED",
   pending: "UNPAID",
   paid: "PAID",
   partially_fulfilled: "PAID",
@@ -77,6 +78,8 @@ const PAYMENT_LABEL: Record<PaymentState, string> = {
 };
 
 const PAYMENT_NOTE: Record<PaymentState, string> = {
+  unconfirmed:
+    "This order has not been confirmed yet. It is not an agreement to supply.",
   pending: "This invoice has not been paid. It is not proof of payment.",
   paid: "Payment received in full.",
   partially_fulfilled:

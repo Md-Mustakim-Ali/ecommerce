@@ -38,8 +38,17 @@ export async function releaseOrderStock(
 
     if (!order) throw new Error(`Order ${orderId} not found`);
 
-    // Anything other than pending has either been paid or already released.
-    if (order.status !== "pending") return { released: false };
+    /**
+     * `unconfirmed` releases too, and holds stock for the same reason
+     * `pending` does — placeOrder decrements inside the transaction that
+     * writes the order, whether or not the buyer has proved their contact yet.
+     * An abandoned guest checkout would otherwise sit on inventory forever.
+     *
+     * Anything else has been paid, cancelled, or already released.
+     */
+    if (order.status !== "pending" && order.status !== "unconfirmed") {
+      return { released: false };
+    }
 
     await tx.execute(sql`
       update product_variants v

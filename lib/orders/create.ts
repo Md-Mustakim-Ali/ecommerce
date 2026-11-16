@@ -35,6 +35,11 @@ export type PlaceOrderInput = {
    */
   email: string | null;
   contactPhone: string | null;
+  /**
+   * Defaults to `pending`. Set to `unconfirmed` for a guest who still has to
+   * prove their contact — see lib/orders/confirmation.ts.
+   */
+  status?: "pending" | "unconfirmed";
   shippingAddress: AddressSnapshot;
   billingAddress?: AddressSnapshot;
   currency: string;
@@ -186,7 +191,15 @@ export async function placeOrder(
         orderNumber,
         email: input.email,
         contactPhone: input.contactPhone,
-        status: "pending",
+        /**
+         * `unconfirmed` when a guest still has to prove the contact they gave.
+         *
+         * The sub-orders below stay `pending` regardless: their status tracks
+         * fulfilment, which has not started either way, and the seller never
+         * sees an unconfirmed order at all — listOrdersForStore filters on the
+         * parent order's status.
+         */
+        status: input.status ?? "pending",
         subtotalCents: totals.subtotalCents,
         shippingCents: totals.shippingCents,
         taxCents: totals.taxCents,

@@ -28,6 +28,11 @@ const PAYMENT_COPY: Record<
   PaymentState,
   { label: string; note: string; tone: "paid" | "unpaid" | "void" }
 > = {
+  unconfirmed: {
+    label: "Not confirmed",
+    note: "This order has not been confirmed yet. It is not an agreement to supply.",
+    tone: "unpaid",
+  },
   pending: {
     label: "Unpaid",
     note: "This invoice has not been paid. It is not proof of payment.",

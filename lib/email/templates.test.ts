@@ -88,6 +88,63 @@ describe("order links in transactional mail", () => {
     assertOpensForAGuest(message.text);
   });
 
+  it("the order-placed note opens for a signed-out buyer", () => {
+    const message = templates.orderPlaced({
+      to: "buyer@example.com",
+      orderNumber: "ORD-2026-000123",
+      orderId: ORDER_ID,
+      currency: "BDT",
+      totalCents: 31200,
+      settlesOffline: true,
+    });
+
+    assertOpensForAGuest(message.text);
+    expect(message.html).toContain(`/orders/${ORDER_ID}?t=`);
+  });
+
+  /**
+   * A receipt is not the place to recruit. Somebody who wants an account can
+   * make one, and that has its own flow and its own verification.
+   */
+  it("the order-placed note does not push the buyer to register", () => {
+    const message = templates.orderPlaced({
+      to: "buyer@example.com",
+      orderNumber: "ORD-2026-000123",
+      orderId: ORDER_ID,
+      currency: "BDT",
+      totalCents: 31200,
+      settlesOffline: true,
+    });
+
+    const words = `${message.text} ${message.html}`.toLowerCase();
+    for (const pitch of ["sign up", "create an account", "register"]) {
+      expect(words).not.toContain(pitch);
+    }
+  });
+
+  it("says something different when payment is already in flight", () => {
+    const offline = templates.orderPlaced({
+      to: "b@example.com",
+      orderNumber: "ORD-1",
+      orderId: ORDER_ID,
+      currency: "BDT",
+      totalCents: 1,
+      settlesOffline: true,
+    });
+    const online = templates.orderPlaced({
+      to: "b@example.com",
+      orderNumber: "ORD-1",
+      orderId: ORDER_ID,
+      currency: "BDT",
+      totalCents: 1,
+      settlesOffline: false,
+    });
+
+    expect(offline.text).not.toBe(online.text);
+    expect(offline.text).toMatch(/confirm your payment before dispatch/i);
+    expect(online.text).toMatch(/checking your payment/i);
+  });
+
   it("the token is specific to the order in the link", () => {
     const message = templates.orderConfirmation({
       to: "buyer@example.com",
