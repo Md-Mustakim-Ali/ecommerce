@@ -18,6 +18,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../lib/db/index.ts";
 import { orders, stores, user } from "../lib/db/schema/index.ts";
+import { signConnectState } from "../lib/media/google/connect.ts";
 
 const BASE = process.env.VERIFY_BASE_URL ?? "http://localhost:3300";
 const PASSWORD = "seed-password-1234";
@@ -106,6 +107,7 @@ async function main() {
     "/products",
     "/analytics",
     "/settings",
+    "/settings/media",
     "/staff",
     "/payouts",
     "/content",
@@ -125,6 +127,57 @@ async function main() {
       `/dashboard/…${route || "  (overview)"} — the other store is refused`,
       refused(other.status),
       `${other.status}${other.location ? ` → ${other.location}` : ""}`,
+    );
+  }
+
+  console.log("\n--- a seller finishing someone else's Google connection ---");
+
+  // The consent URL carries a signed state naming the store and project. The
+  // signature proves what was chosen, not who is arriving with it — so the
+  // callback has to re-check the permission rather than trust the state alone.
+  // Otherwise a leaked URL binds the finisher's own Drive and YouTube channel
+  // to a store that is not theirs.
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret) {
+    check("BETTER_AUTH_SECRET is set, so the callback can be probed", false);
+  } else {
+    const forged = signConnectState(
+      {
+        storeId: theirs.id,
+        projectId: "00000000-0000-0000-0000-000000000000",
+        exp: Math.floor(Date.now() / 1000) + 600,
+      },
+      secret,
+    );
+
+    const callback = await get(
+      `/api/google/callback?state=${encodeURIComponent(forged)}&code=irrelevant`,
+      sellerCookie,
+    );
+    check(
+      "the callback refuses a state for a store the caller cannot manage",
+      refused(callback.status),
+      `${callback.status}`,
+    );
+
+    const anonymous = await get(
+      `/api/google/callback?state=${encodeURIComponent(forged)}&code=irrelevant`,
+    );
+    check(
+      "and refuses it signed out",
+      refused(anonymous.status),
+      `${anonymous.status}`,
+    );
+
+    // A tampered state must not get as far as the permission check.
+    const tampered = await get(
+      `/api/google/callback?state=${encodeURIComponent(`${forged}x`)}&code=irrelevant`,
+      sellerCookie,
+    );
+    check(
+      "a tampered state is rejected outright",
+      tampered.status === 400,
+      `${tampered.status}`,
     );
   }
 

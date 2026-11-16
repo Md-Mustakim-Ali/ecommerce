@@ -19,7 +19,19 @@ const ACTION_LABEL: Record<string, string> = {
   "member.remove": "removed someone",
   "member.assign_role": "changed someone's roles",
   "order.cancel": "cancelled an order",
+  "media.project.add": "added the Cloud project",
+  "media.project.remove": "removed the Cloud project",
+  "media.account.connect": "connected the Google account",
+  "media.account.remove": "disconnected the Google account",
+  "media.account.reorder": "made this the first upload account:",
 };
+
+/** Reads a number out of an audit payload, for the counts media entries carry. */
+function counted(value: unknown, key: string): number | null {
+  if (typeof value !== "object" || value === null) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "number" ? field : null;
+}
 
 /** Pulls the permission or role names out of an audit payload, if any. */
 function names(value: unknown, key: string): string[] {
@@ -44,7 +56,7 @@ export function AuditTrail({ entries }: { entries: Entry[] }) {
       <div>
         <h2 className="font-medium text-sm">Recent changes</h2>
         <p className="text-secondary-text text-xs">
-          Every change to roles and staff, kept permanently.
+          Every change to roles, staff and media connections, kept permanently.
         </p>
       </div>
 
@@ -62,6 +74,7 @@ export function AuditTrail({ entries }: { entries: Entry[] }) {
             const removed = names(entry.before, "removed");
             const rolesAfter = names(entry.after, "roles");
             const rolesBefore = names(entry.before, "roles");
+            const mediaHidden = counted(entry.after, "mediaHidden");
 
             return (
               <li
@@ -93,6 +106,15 @@ export function AuditTrail({ entries }: { entries: Entry[] }) {
                           −{key}
                         </Badge>
                       ))}
+                    </span>
+                  ) : null}
+
+                  {/* The number is the whole story on a disconnect: this is
+                      the one action that can hide live product photos in bulk. */}
+                  {mediaHidden !== null && mediaHidden > 0 ? (
+                    <span className="text-critical text-xs">
+                      {mediaHidden} {mediaHidden === 1 ? "file" : "files"}{" "}
+                      hidden
                     </span>
                   ) : null}
 

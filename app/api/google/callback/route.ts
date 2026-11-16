@@ -1,7 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { getStoreAccess } from "@/lib/auth/access";
+import { getSession } from "@/lib/auth/guards";
 import { db } from "@/lib/db";
 import {
+  auditLog,
   storeGoogleAccounts,
   storeGoogleGrants,
   storeGoogleProjects,
@@ -50,6 +53,21 @@ export async function GET(request: Request) {
     return new Response("This connection link has expired. Start again.", {
       status: 400,
     });
+  }
+
+  // Re-checked here, not just where the consent URL was built.
+  //
+  // The signed state proves which store and project were chosen; it does not
+  // prove who is arriving with it. Without this, anyone who came by that URL —
+  // browser history, a shared screen, a referrer header — could finish the
+  // flow and bind their own Drive and YouTube channel to somebody else's
+  // store, then delete the videos it was serving.
+  const access = await getStoreAccess(state.storeId);
+  if (!access?.permissions.has("media.connection.manage")) {
+    return new Response(
+      "You do not have permission to connect a media account to this store.",
+      { status: 403 },
+    );
   }
 
   if (error) {
@@ -162,6 +180,23 @@ export async function GET(request: Request) {
         lastErrorAt: null,
       },
     });
+
+  // This is the moment an outside account gains standing in the store, so it
+  // is the one worth logging. Written after the grant so a failed exchange
+  // does not leave a record of a connection that never existed.
+  const session = await getSession();
+
+  await db.insert(auditLog).values({
+    storeId: state.storeId,
+    actorId: access.userId,
+    actorEmail: session?.user.email ?? null,
+    action: "media.account.connect",
+    targetType: "google_account",
+    targetId: account.id,
+    targetLabel: identity.email,
+    before: null,
+    after: { email: identity.email, projectId: project.id },
+  });
 
   // Best effort, and deliberately not fatal: a connection that works but has
   // not reported its free space yet is fine, because the picker treats an
