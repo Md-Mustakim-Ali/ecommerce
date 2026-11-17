@@ -58,6 +58,12 @@ These are named rather than quietly skipped.
   hardware.
 - **Authenticated routes are not in the accessibility sweep**, because they
   need a session.
+- **Seller payouts are sent by hand, and an open design question sits behind
+  that.** A multi-seller cart is one bKash transfer to one number, so the
+  platform collects centrally and an admin pays each seller manually — there is
+  no disbursement code. Jomma is already multi-tenant and this platform does not
+  use it that way, which is the cheaper half of the fix. Analysis, verified
+  against a real order, in [`multi-seller-money-flow.md`](./multi-seller-money-flow.md).
 
 ## Runnable checks
 
