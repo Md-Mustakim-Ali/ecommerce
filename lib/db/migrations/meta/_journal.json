@@ -148,6 +148,13 @@
       "when": 1789016638201,
       "tag": "0020_glorious_bloodaxe",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789024296725,
+      "tag": "0021_empty_talkback",
+      "breakpoints": true
     }
   ]
 }

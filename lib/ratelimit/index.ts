@@ -20,7 +20,12 @@ import { rateLimits } from "@/lib/db/schema";
  * spike into an outage, and there is nothing to steal there.
  */
 
-export type Bucket = "sign-in" | "sign-up" | "checkout" | "email";
+export type Bucket =
+  | "sign-in"
+  | "sign-up"
+  | "checkout"
+  | "email"
+  | "order-code";
 
 type Rule = { limit: number; windowSeconds: number; message: string };
 
@@ -54,6 +59,23 @@ const RULES: Record<Bucket, Rule> = {
     limit: 5,
     windowSeconds: 60 * 60,
     message: "Too many requests. Check your inbox, including spam.",
+  },
+  /*
+    Guessing the six-digit code emailed to a guest.
+
+    Keyed on the ORDER, not on the caller — see the call site. Somebody
+    attacking one order can rotate addresses freely, so limiting by address
+    would limit the wrong thing entirely.
+
+    Eight in fifteen minutes is roughly 750 guesses a day against a million
+    possibilities, which puts an even chance of hitting one at some hundreds of
+    years. A buyer copying a code out of an email needs one attempt, or two
+    with a typo.
+  */
+  "order-code": {
+    limit: 8,
+    windowSeconds: 15 * 60,
+    message: "Too many attempts. Use the button in your email instead.",
   },
 };
 

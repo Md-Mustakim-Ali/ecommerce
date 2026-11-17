@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { confirmedPath, confirmOrder } from "@/lib/orders/confirmation";
+import { resumePayment } from "@/lib/payments/jomma/resume";
 
 /**
  * The link a guest follows to prove the contact they checked out with.
@@ -50,9 +51,27 @@ export async function GET(request: Request) {
 
   if (!orderId) return fail("missing");
 
-  const result = await confirmOrder(orderId, token);
+  const result = await confirmOrder(orderId, { token });
 
   if (!result.ok) return fail(result.reason);
+
+  /*
+    Confirming and paying are one journey, so this does not stop halfway.
+
+    A buyer who chose bKash has just proved who they are and is now expected to
+    pay; landing them on their order with a button to press would be an extra
+    step for no reason. `resumePayment` decides what that actually means —
+    reuse a live intent, raise one for the balance, or nothing at all if the
+    order is already covered or settles offline.
+
+    Clicking the link a second time is safe and lands somewhere sensible: the
+    order is already `pending`, so confirmOrder reports it as already done, and
+    resume either hands back the same intent or sends them to the order.
+  */
+  const resumed = await resumePayment(result.orderId);
+  if (resumed.kind === "pay") {
+    return NextResponse.redirect(resumed.payUrl);
+  }
 
   return NextResponse.redirect(publicUrl(confirmedPath(result.orderId)));
 }

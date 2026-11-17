@@ -7,6 +7,7 @@ import { orders } from "@/lib/db/schema/orders";
 import { sendOrderConfirmation } from "@/lib/email/notify";
 import { recordOrderPaid } from "@/lib/money/ledger";
 import { jomma } from "./client";
+import { coverageOf } from "./coverage";
 
 /**
  * Asking Jomma what actually happened to an order's payment.
@@ -83,6 +84,8 @@ export type PaymentSnapshot = {
 };
 
 export type AppliedPaymentView = {
+  /** Which intent this transfer arrived against. An order can have several. */
+  intentId: string;
   trxId: string | null;
   senderMsisdn: string | null;
   amountCents: number;
@@ -172,27 +175,38 @@ export async function syncOrderPayment(
   /*
     The reconcile.
 
-    Only from `pending`, and only when Jomma says it has at least the full
-    amount. `matched` and `over` are the two states that mean covered — the
-    webhook fulfils on succeeded and overpaid for the same reason.
+    Asked of the ORDER, not of this intent — see lib/payments/jomma/coverage.ts.
+    An order that expired half-paid gets a new intent for the balance, so no
+    single intent ever sees the full price and "did this intent receive the
+    total" can never come true. What must hold is that everything Jomma has
+    reported for this order adds up to what the order costs.
 
-    The amount guard mirrors the webhook's, with one deliberate difference: the
-    webhook compares `received_amount` for exact equality, which is right for a
-    `payment.succeeded` event but would refuse a legitimate overpayment here.
-    What must hold is that the intent was raised for this order's total — if it
-    was not, our own amount handling is wrong and shipping is the last thing to
-    do about it.
+    Read after persistAppliedPayments deliberately: that call is what turns this
+    intent's `payments[]` into rows, so reading before it would miss the very
+    transfer that just completed the order.
+
+    Computed from the rows this function already has to load rather than through
+    coverageForOrder, which would be a second query for an answer we are holding.
   */
-  const covered = intent.status === "matched" || intent.status === "over";
-  if (covered && order.status === "pending") {
-    if (intent.amount !== order.totalCents) {
-      console.error("[jomma] intent amount does not match order", {
-        orderId,
-        intentId,
-        orderTotal: order.totalCents,
-        intentAmount: intent.amount,
-      });
-    } else if (intent.received_amount >= order.totalCents) {
+  const settled = await readStoredPayments(orderId);
+  const coverage = coverageOf({
+    totalCents: order.totalCents,
+    receivedCents: receivedAcrossIntents(settled, intentId, intent),
+  });
+
+  /*
+    Two conditions, and both are load-bearing.
+
+    Coverage answers "has enough money arrived", across every intent this order
+    has had. `matched`/`over` answers "did Jomma accept it" — money sitting
+    against an expired or cancelled intent has arrived without being matched to
+    anything, which is a reconciliation problem for a person and never an
+    instruction to ship. Dropping this second half meant a dead intent holding
+    the full amount settled itself.
+  */
+  const accepted = intent.status === "matched" || intent.status === "over";
+  if (accepted && coverage.covered && order.status === "pending") {
+    {
       const result = await recordOrderPaid(db, {
         orderId,
         paymentIntentId: intentId,
@@ -205,8 +219,15 @@ export async function syncOrderPayment(
         console.info("[jomma] order settled by poll, not webhook", {
           orderId,
           intentId,
-          received: intent.received_amount,
+          received: coverage.receivedCents,
+          total: coverage.totalCents,
         });
+        if (coverage.overpaidCents > 0) {
+          console.warn("[jomma] OVERPAID — refund owed to buyer", {
+            orderId,
+            excess: coverage.overpaidCents,
+          });
+        }
       } else {
         // Something else got there first between our read and the lock.
         const [fresh] = await db
@@ -321,6 +342,7 @@ async function readStoredPayments(
     .orderBy(jommaAppliedPayments.appliedAt);
 
   return rows.map((row) => ({
+    intentId: row.intentId,
     trxId: row.trxId,
     senderMsisdn: row.senderMsisdn,
     amountCents: row.amountCents,
@@ -333,4 +355,29 @@ async function readStoredPayments(
 
 function sum(payments: AppliedPaymentView[]): number {
   return payments.reduce((total, payment) => total + payment.amountCents, 0);
+}
+
+/**
+ * What this order has received in total, trusting the better source per intent.
+ *
+ * Two sources disagree, and both are Jomma's. `payments[]` is the itemised
+ * breakdown that becomes our rows; `received_amount` is the intent's own
+ * total. They should be equal, and for the intent in front of us they usually
+ * are — but `payments[]` has been seen arriving short, and settling an order is
+ * the one decision where quietly undercounting means refusing to ship
+ * something that was genuinely paid for.
+ *
+ * So: every other intent contributes its stored rows, which is the only record
+ * of it we have, and the current one contributes whichever of its two numbers
+ * is larger. Taking the larger cannot over-credit, because both are Jomma's own
+ * statements about the same transfers.
+ */
+function receivedAcrossIntents(
+  stored: AppliedPaymentView[],
+  currentIntentId: string,
+  intent: Intent,
+): number {
+  const fromOthers = sum(stored.filter((p) => p.intentId !== currentIntentId));
+  const fromThis = sum(stored.filter((p) => p.intentId === currentIntentId));
+  return fromOthers + Math.max(fromThis, intent.received_amount);
 }

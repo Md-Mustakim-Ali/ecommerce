@@ -19,6 +19,7 @@ import {
   buildOrderTotals,
   type CartLineInput,
 } from "@/lib/money/order-math";
+import type { PaymentMethod } from "@/lib/payments/methods";
 
 export type PlaceOrderInput = {
   cartId: string;
@@ -40,6 +41,16 @@ export type PlaceOrderInput = {
    * prove their contact — see lib/orders/confirmation.ts.
    */
   status?: "pending" | "unconfirmed";
+  /**
+   * How the buyer chose to pay, recorded on the order.
+   *
+   * Needed because a gated prepay order has no payment intent yet — the intent
+   * is raised after the contact is proved, so Jomma's fifteen-minute timer does
+   * not start while the buyer is reading their email. Without this the order
+   * carries no record of whether it is waiting for a bKash payment or for a
+   * courier.
+   */
+  paymentMethod?: PaymentMethod;
   shippingAddress: AddressSnapshot;
   billingAddress?: AddressSnapshot;
   currency: string;
@@ -200,6 +211,7 @@ export async function placeOrder(
          * parent order's status.
          */
         status: input.status ?? "pending",
+        paymentMethod: input.paymentMethod ?? null,
         subtotalCents: totals.subtotalCents,
         shippingCents: totals.shippingCents,
         taxCents: totals.taxCents,

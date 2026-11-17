@@ -37,6 +37,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
 
-  const { expired } = await expireUnconfirmedOrders();
-  return NextResponse.json({ ok: true, expired });
+  const result = await expireUnconfirmedOrders();
+  return NextResponse.json({ ok: true, ...result });
 }

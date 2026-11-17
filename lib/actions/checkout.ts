@@ -241,28 +241,27 @@ export async function placeOrderAction(
    * no configured channel can reach, because gating an order nobody can
    * confirm just means refusing to sell.
    */
-  const gated =
-    /**
-     * Only the offline method. Both are open to guests — a guest can pay by
-     * bKash or Nagad exactly as before — but paying is stronger proof than
-     * clicking a link, so an order that is about to be paid for needs no
-     * separate confirmation, and cash on delivery is where a fabricated
-     * address actually costs a seller a parcel.
-     *
-     * This is also load-bearing rather than a nicety. Every money path gates
-     * on `pending`: recordOrderPaid, the Jomma sync and both webhook branches
-     * all refuse an order that is not. Holding a prepaid order at
-     * `unconfirmed` would mean the buyer pays and the webhook silently drops
-     * the settlement.
-     */
-    parsed.data.paymentMethod === "manual" &&
-    needsConfirmation({
-      email: contactEmail,
-      contactPhone,
-      buyerVerified: Boolean(
-        session?.user.emailVerified || session?.user.phoneNumberVerified,
-      ),
-    });
+  /**
+   * Every payment method now, not just cash on delivery.
+   *
+   * This was `paymentMethod === "manual" && …`, on the reasoning that paying is
+   * stronger proof than clicking a link. The reasoning was sound and the
+   * constraint behind it was real: every money path gates on `pending`, so an
+   * order held at `unconfirmed` would take a payment the webhook then dropped.
+   *
+   * What was wrong was the order of operations, not the rule. The contact is
+   * proved *before* any intent exists — see below — so by the time there is a
+   * payment to settle the order is already `pending` and nothing is dropped.
+   * That also stops Jomma's fifteen-minute timer running down while the buyer
+   * is still looking for the email.
+   */
+  const gated = needsConfirmation({
+    email: contactEmail,
+    contactPhone,
+    buyerVerified: Boolean(
+      session?.user.emailVerified || session?.user.phoneNumberVerified,
+    ),
+  });
 
   const result = await placeOrder({
     cartId,
@@ -270,6 +269,7 @@ export async function placeOrderAction(
     email: contactEmail,
     contactPhone,
     status: gated ? "unconfirmed" : "pending",
+    paymentMethod: parsed.data.paymentMethod,
     shippingAddress: parsed.data.shippingAddress,
     currency: CURRENCY,
     shippingCents,
@@ -289,12 +289,32 @@ export async function placeOrderAction(
    */
   if (gated) {
     await sendConfirmationRequest(result.orderId);
-  } else {
-    await sendOrderPlaced(
-      result.orderId,
-      parsed.data.paymentMethod === "manual",
-    );
+
+    /*
+      Stop here. No intent, for any method.
+
+      This is the whole reason gating prepay works now. Raising a Jomma intent
+      at this point would start a fifteen-minute countdown against a buyer who
+      has not opened their email yet, and hand out a reference code for an
+      order that may never be confirmed. The intent is raised the moment they
+      prove the contact — by code or by link, both land in resumePayment — for
+      exactly what is outstanding at that moment.
+    */
+    revalidatePath("/account/orders");
+    return {
+      ok: true,
+      orderId: result.orderId,
+      orderNumber: result.orderNumber,
+      accessToken: signOrderAccess(result.orderId),
+      awaitingConfirmation: true,
+      confirmationSentTo: contactEmail ?? contactPhone,
+      // Nowhere to send them yet. The checkout page asks for the code instead.
+      redirectUrl: undefined,
+      settlesOffline: parsed.data.paymentMethod === "manual",
+    };
   }
+
+  await sendOrderPlaced(result.orderId, parsed.data.paymentMethod === "manual");
 
   // ── bKash / Nagad, via Jomma ───────────────────────────────────────────
   //

@@ -81,6 +81,22 @@ vi.mock("@/lib/db", () => {
 vi.mock("@/lib/money/ledger", () => ({ recordOrderPaid, recordOrderReversed }));
 vi.mock("@/lib/email/notify", () => ({ sendOrderConfirmation }));
 vi.mock("@/lib/payments/jomma/release", () => ({ releaseOrderStock }));
+
+/*
+  Coverage is asked of the ORDER now, not of the event — an order that expired
+  half-paid gets a new intent for the balance, so the event that completes it
+  reports the balance and never the total. Driven per test through this handle.
+*/
+let coverage = {
+  totalCents: 75604,
+  receivedCents: 75604,
+  outstandingCents: 0,
+  overpaidCents: 0,
+  covered: true,
+};
+vi.mock("@/lib/payments/jomma/coverage", () => ({
+  coverageForOrder: vi.fn(async () => coverage),
+}));
 vi.mock("@/lib/payments/jomma/sync", () => ({
   fetchAndPersistAppliedPayments,
 }));
@@ -139,6 +155,13 @@ beforeEach(() => {
   seenEvents.clear();
   vi.clearAllMocks();
   currentOrder = makeOrder();
+  coverage = {
+    totalCents: 75604,
+    receivedCents: 75604,
+    outstandingCents: 0,
+    overpaidCents: 0,
+    covered: true,
+  };
 });
 
 describe("jomma webhook handler", () => {
@@ -293,16 +316,29 @@ describe("jomma webhook handler", () => {
     expect(recordOrderPaid).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses to fulfil when the amount does not match the order", async () => {
-    // The check that catches a bug in our own amount handling before it
-    // becomes a shipped parcel.
+  it("refuses to fulfil an order the money does not cover", async () => {
+    /*
+      The guard that catches a bug in our own amount handling before it becomes
+      a shipped parcel. It used to compare this event's `received_amount` to the
+      order total for exact equality; it now asks whether everything the order
+      has received adds up, because a top-up intent never reports the total.
+      Same protection, one level up.
+    */
+    coverage = {
+      totalCents: 75604,
+      receivedCents: 1,
+      outstandingCents: 75603,
+      overpaidCents: 0,
+      covered: false,
+    };
+
     const response = await deliver(
       paymentEvent("evt_mismatch", "payment.succeeded", { received_amount: 1 }),
     );
 
     expect(await response.json()).toMatchObject({
       handled: false,
-      reason: "amount mismatch",
+      reason: "not covered",
     });
     expect(recordOrderPaid).not.toHaveBeenCalled();
   });
@@ -324,17 +360,30 @@ describe("jomma webhook handler", () => {
     });
   });
 
-  it("releases stock on payment.expired, but only while pending", async () => {
-    await deliver(paymentEvent("evt_exp", "payment.expired"));
-    expect(releaseOrderStock).toHaveBeenCalledWith(ORDER_ID, "expired");
+  /**
+   * An expired intent used to release the stock and end the order. It no longer
+   * does: a buyer can now come back and finish paying for a full day, so an
+   * intent timing out is a payment window closing, not a buyer giving up.
+   * Expiry is decided in one place — the sweep in lib/orders/confirmation.ts —
+   * because two things racing to decide when an order dies is how one of them
+   * starts killing orders somebody has already paid for.
+   */
+  it("leaves a pending order alone on payment.expired, so it stays resumable", async () => {
+    const response = await deliver(paymentEvent("evt_exp", "payment.expired"));
+
+    expect(releaseOrderStock).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({
+      handled: true,
+      reason: "resumable until the sweep",
+    });
 
     // A paid order must never be unwound by a stale expiry arriving late.
     vi.clearAllMocks();
     currentOrder = makeOrder({ status: "paid" });
-    const response = await deliver(paymentEvent("evt_exp2", "payment.expired"));
+    const paid = await deliver(paymentEvent("evt_exp2", "payment.expired"));
 
     expect(releaseOrderStock).not.toHaveBeenCalled();
-    expect(await response.json()).toMatchObject({ handled: false });
+    expect(await paid.json()).toMatchObject({ handled: false });
   });
 
   it("logs account events without touching any order", async () => {

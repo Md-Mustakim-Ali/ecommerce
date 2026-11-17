@@ -72,8 +72,16 @@ export async function startPayment(input: {
   payerMsisdn: string | null;
   returnUrl: string;
   cancelUrl: string;
-  /** Bumped by the caller only when deliberately re-requesting payment. */
-  attempt: number;
+  /**
+   * What distinguishes this request for payment from the last one.
+   *
+   * Feeds the idempotency key, so retrying the *same* request produces the same
+   * intent while a genuinely new one produces a new intent. A number for the
+   * first attempt; the resume path passes `after-<replaced intent id>`, which
+   * is stable for that repair and different for the next — so a double-click
+   * cannot leave the buyer holding two live reference codes for one order.
+   */
+  attempt: number | string;
 }): Promise<StartedPayment> {
   // Rule one: no float ever reaches this path. Every amount in this codebase
   // comes from an integer column, so this should be unreachable — which is

@@ -6,6 +6,7 @@ import { jommaWebhookEvents, orders } from "@/lib/db/schema";
 import { sendOrderConfirmation } from "@/lib/email/notify";
 import { recordOrderPaid, recordOrderReversed } from "@/lib/money/ledger";
 import { jomma, jommaWebhookSecret } from "@/lib/payments/jomma/client";
+import { coverageForOrder } from "@/lib/payments/jomma/coverage";
 import { releaseOrderStock } from "@/lib/payments/jomma/release";
 import { fetchAndPersistAppliedPayments } from "@/lib/payments/jomma/sync";
 
@@ -145,16 +146,30 @@ async function handle(
 
   switch (event.type) {
     case "payment.succeeded": {
-      // Jomma is the authority on what actually arrived. If it disagrees with
-      // what we asked for, stop — this is the check that catches a bug in our
-      // own amount handling before it becomes a shipped parcel.
-      if (event.data.received_amount !== order.totalCents) {
-        console.error("[jomma] amount mismatch", {
+      /*
+        Asked of the order, not of this event.
+
+        This used to require `received_amount === order.totalCents`, which was
+        right while an order had exactly one intent for its full price. It stops
+        being right the moment a buyer can come back and finish paying: an
+        order that expired half-paid gets a new intent for the balance, so the
+        event that completes it reports the balance and not the total, and the
+        equality check refused to settle an order that was fully paid.
+
+        The guard it was providing has not been dropped, only moved. What it
+        caught was our own amount handling being wrong — that now lives in the
+        resume path, which raises an intent for exactly what coverage says is
+        outstanding, and in the overpaid warning below.
+      */
+      const coverage = await coverageForOrder(order.id);
+      if (!coverage.covered) {
+        console.error("[jomma] succeeded but order is not covered", {
           orderId: order.id,
-          expected: order.totalCents,
-          received: event.data.received_amount,
+          total: coverage.totalCents,
+          received: coverage.receivedCents,
+          outstanding: coverage.outstandingCents,
         });
-        return { handled: false, reason: "amount mismatch" };
+        return { handled: false, reason: "not covered" };
       }
 
       const result = await recordOrderPaid(db, {
@@ -201,14 +216,31 @@ async function handle(
     }
 
     case "payment.expired": {
-      // The TTL elapsed with nothing received. Releases the stock the order
-      // reserved, but only from `pending` — an order that reached `paid` by
-      // some other route must not be unwound by a stale expiry.
+      /*
+        An expired intent no longer ends the order.
+
+        It used to release the stock here and be done. That was right while a
+        buyer had exactly one chance to pay: fifteen minutes, then the order is
+        gone. It is wrong now that they can come back — an intent expiring is a
+        payment window closing, not a buyer giving up, and someone who reads
+        their email an hour later must still find their order where they left
+        it.
+
+        So this records the fact and changes nothing. Expiry is now decided in
+        exactly one place, by the sweep in lib/orders/confirmation.ts, which
+        gives an unpaid order a full day and then takes the stock back. Two
+        things racing to decide when an order dies is how one of them starts
+        killing orders somebody has already paid for.
+      */
       if (order.status !== "pending") {
         return { handled: false, reason: `order is ${order.status}` };
       }
-      await releaseOrderStock(order.id, "expired");
-      return { handled: true };
+      console.info("[jomma] intent expired, order still resumable", {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        intentId: event.data.intent_id,
+      });
+      return { handled: true, reason: "resumable until the sweep" };
     }
 
     case "payment.cancelled": {

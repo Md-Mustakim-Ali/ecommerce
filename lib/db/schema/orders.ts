@@ -139,6 +139,40 @@ export const orders = pgTable(
 
     paymentIntentId: text("payment_intent_id"),
 
+    /**
+     * How the buyer chose to pay. One of lib/payments/methods.
+     *
+     * Recorded rather than inferred. It used to be readable from the shape of
+     * `payment_intent_id` — `manual_…` offline, `int_…` through Jomma — and
+     * that worked only because an intent was always created during checkout.
+     *
+     * A guest paying by bKash now proves their contact *before* any intent
+     * exists, precisely so Jomma's fifteen-minute timer does not start while
+     * they are reading their email. For that window the order has no intent id
+     * at all, and guessing from its absence would mean sending a cash-on-
+     * delivery buyer to a payment page, or stranding a bKash buyer with no way
+     * to pay.
+     *
+     * Nullable because orders placed before this column existed genuinely do
+     * not record it; the migration backfills what can be recovered from the
+     * intent id, and readers fall back to that same inference.
+     */
+    paymentMethod: text("payment_method"),
+
+    /**
+     * When the buyer proved the contact they checked out with.
+     *
+     * Starts the clock on paying. A guest gets 24 hours from *here* rather than
+     * from checkout, because the two can be far apart — somebody who orders at
+     * midnight and reads their email at noon has not used up half their window
+     * sleeping.
+     *
+     * Null for an order that was never gated, which is most of them: a
+     * signed-in buyer with a verified contact has nothing to prove. Readers
+     * fall back to `createdAt`, so a null never means "unlimited".
+     */
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+
     placedAt: timestamp("placed_at", { withTimezone: true }),
 
     ...timestamps,

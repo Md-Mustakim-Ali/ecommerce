@@ -96,29 +96,66 @@ export function confirmOrderRequest(input: {
   currency: string;
   totalCents: number;
   url: string;
+  /** The typed alternative to the button. See lib/orders/confirmation.ts. */
+  code: string;
+  /** Whether confirming leads straight to a payment page. */
+  paysOnline: boolean;
 }): EmailMessage {
+  const total = formatMoney(input.totalCents, input.currency);
+
+  /*
+    What happens after they confirm, said plainly.
+
+    A buyer paying by bKash is about to be sent to a payment page, and one
+    paying on delivery is not. Telling them which avoids the worst reading of
+    "confirm your order" — that confirming is itself the payment.
+  */
+  const next = input.paysOnline
+    ? "Confirming takes you straight to the bKash or Nagad payment page."
+    : "Confirming is all we need — you pay when it arrives.";
+
+  /*
+    The deadline, stated because it is enforced.
+
+    An unpaid order is swept after a day: the stock goes back on sale and the
+    order stops existing. A buyer who is told that can act on it; one who is
+    not simply finds their order gone and assumes we lost it.
+  */
+  const deadline = input.paysOnline
+    ? "You have 24 hours to confirm and pay. After that the order is cancelled, nothing is charged, and the items go back on sale."
+    : "You have 24 hours to confirm. After that the order is cancelled and the items go back on sale.";
+
   return {
     to: input.to,
     subject: `Confirm your order ${input.orderNumber}`,
     text: [
-      `Almost done — order ${input.orderNumber} needs one click.`,
+      `Almost done — order ${input.orderNumber} needs confirming.`,
       "",
-      `Total: ${formatMoney(input.totalCents, input.currency)}`,
+      `Total: ${total}`,
       "",
-      "We hold it for 24 hours. Confirm here and we will start packing:",
+      `Your confirmation code: ${input.code}`,
+      "",
+      "Enter that code on the checkout page, or open this link — either one works:",
       input.url,
       "",
-      "The same link opens your order any time. No account needed.",
+      next,
+      "",
+      deadline,
       "",
       "If you did not place this order, ignore this — nothing happens without it.",
     ].join("\n"),
     html: shell(
-      "One click to confirm",
+      "Confirm your order",
       `<p style="margin:0 0 8px;font-size:15px;">Order <strong>${html(input.orderNumber)}</strong> is waiting on you.</p>
-<p style="margin:0 0 16px;font-size:15px;">Total ${formatMoney(input.totalCents, input.currency)}</p>
-<p style="margin:0 0 16px;font-size:14px;color:#3f4750;">We hold it for 24 hours. Confirm and we will start packing.</p>
+<p style="margin:0 0 16px;font-size:15px;">Total ${total}</p>
+<p style="margin:0 0 8px;font-size:14px;color:#3f4750;">Your confirmation code</p>
+<p style="margin:0 0 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;font-weight:700;letter-spacing:6px;color:#101418;">${html(input.code)}</p>
+<p style="margin:0 0 16px;font-size:14px;color:#3f4750;">Enter it on the checkout page, or use the button — either one works.</p>
 ${button(input.url, "Confirm my order")}
-<p style="margin:16px 0 0;font-size:13px;color:#6b7683;">The same link opens your order any time — no account needed. If you did not place this order, ignore this; nothing happens without it.</p>`,
+<p style="margin:16px 0 0;font-size:13px;color:#6b7683;">${html(next)}</p>
+<p style="margin:12px 0 0;font-size:13px;color:#6b7683;">${html(deadline)}</p>
+<p style="margin:12px 0 0;font-size:13px;color:#6b7683;">If the button does not work, copy this address into your browser:<br><span style="word-break:break-all;color:#3f4750;">${html(input.url)}</span></p>
+<p style="margin:12px 0 0;font-size:13px;color:#6b7683;">If you did not place this order, ignore this; nothing happens without it.</p>`,
     ),
     replyTo: env.EMAIL_REPLY_TO ?? env.EMAIL_FROM,
   };
