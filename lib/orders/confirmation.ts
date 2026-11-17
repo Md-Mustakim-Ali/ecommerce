@@ -90,7 +90,7 @@ export function verifyOrderConfirm(
 }
 
 /** How many digits a buyer has to copy out of an email. */
-const CODE_DIGITS = 6;
+export const CONFIRM_CODE_DIGITS = 6;
 
 /**
  * The same proof, short enough to type.
@@ -112,9 +112,9 @@ export function orderConfirmCode(orderId: string): string {
     .digest();
 
   // A fixed slice, so the value is stable for the life of the order.
-  return (digest.readUInt32BE(0) % 10 ** CODE_DIGITS)
+  return (digest.readUInt32BE(0) % 10 ** CONFIRM_CODE_DIGITS)
     .toString()
-    .padStart(CODE_DIGITS, "0");
+    .padStart(CONFIRM_CODE_DIGITS, "0");
 }
 
 /**

@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   CheckCircle2,
   FileText,
   Mail,
@@ -18,10 +19,15 @@ import { formatDateTime } from "@/lib/datetime/format";
 import { formatMoney } from "@/lib/money/format";
 import { withAccessToken } from "@/lib/orders/access";
 import {
+  CONFIRM_CODE_DIGITS,
+  PAYMENT_WINDOW_MS,
+} from "@/lib/orders/confirmation";
+import {
   getAppliedPaymentsForOrder,
   getOrderForBuyer,
 } from "@/lib/orders/queries";
 import { displayPhone } from "@/lib/validation/phone";
+import { ConfirmCodeForm } from "./confirm-code";
 import { DemoPayButton } from "./demo-pay";
 import { MessageThread } from "./message-thread";
 import { PaymentStatus } from "./payment-status";
@@ -118,6 +124,34 @@ export default async function OrderPage({
   const shortfallCents = Math.max(0, order.totalCents - receivedCents);
   const excessCents = Math.max(0, receivedCents - order.totalCents);
 
+  /*
+    Whether there is still something to pay, and still time to pay it.
+
+    This page is the one place a buyer comes back to, whether they abandoned a
+    payment, sent half of it, or simply closed the tab — so it has to carry the
+    way back rather than assuming they still hold a pay-page URL. The button
+    goes to /api/orders/pay, which works the amount out again server-side; the
+    figures here only decide whether to offer it.
+
+    Dated from `confirmedAt` for the same reason resumePayment is: the day they
+    get starts when they proved their contact, not when they filled the form in.
+    A null falls back to `createdAt`, so it can never read as unlimited.
+  */
+  const method =
+    order.paymentMethod ??
+    (order.paymentIntentId?.startsWith("int_") ? "any" : "manual");
+  const windowOpenedAt = order.confirmedAt ?? order.createdAt;
+  const windowClosed =
+    Date.now() - windowOpenedAt.getTime() > PAYMENT_WINDOW_MS;
+  const canPayNow =
+    order.status === "pending" &&
+    method !== "manual" &&
+    shortfallCents > 0 &&
+    !windowClosed;
+
+  // Why the pay button did nothing, when the buyer has just come back from it.
+  const payNotice = typeof query.pay === "string" ? query.pay : null;
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-8 sm:px-6">
       {watchPayment ? (
@@ -146,21 +180,45 @@ export default async function OrderPage({
             className="mt-0.5 size-5 shrink-0 text-accent-text"
             aria-hidden
           />
-          <div className="flex flex-col gap-1">
-            <p className="font-medium text-accent-text">
-              One more click and it is yours
-            </p>
-            <p className="text-secondary-text text-sm">
-              We sent a confirmation link
-              {order.email ? (
-                <>
-                  {" "}
-                  to <span className="font-medium">{order.email}</span>
-                </>
-              ) : null}
-              . Open it and we will start packing. Your items are held for 24
-              hours, and nothing has been charged.
-            </p>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <p className="font-medium text-accent-text">
+                {method === "manual"
+                  ? "One more step and it is yours"
+                  : "Confirm, then pay"}
+              </p>
+              <p className="text-secondary-text text-sm">
+                We sent a code and a link
+                {order.email ? (
+                  <>
+                    {" "}
+                    to <span className="font-medium">{order.email}</span>
+                  </>
+                ) : order.contactPhone ? (
+                  <>
+                    {" "}
+                    to{" "}
+                    <span className="font-medium">
+                      {displayPhone(order.contactPhone)}
+                    </span>
+                  </>
+                ) : null}
+                . Enter the code here, or open the link — either one works.{" "}
+                {method === "manual"
+                  ? "Then we start packing."
+                  : "Then you can pay by bKash or Nagad."}{" "}
+                Nothing has been charged, and an order left unconfirmed for 24
+                hours is cancelled.
+              </p>
+            </div>
+
+            {/*
+              The code, not just the link. A mail client that mangles the button
+              or a buyer reading email on a different device from the one this
+              page is open on both end up here, and before this they had nowhere
+              to go.
+            */}
+            <ConfirmCodeForm orderId={order.id} digits={CONFIRM_CODE_DIGITS} />
           </div>
         </div>
       ) : justPlaced ? (
@@ -177,6 +235,87 @@ export default async function OrderPage({
                 : ""}
             </p>
           </div>
+        </div>
+      ) : null}
+
+      {/*
+        The way back to paying.
+
+        Deliberately above the order rather than beside the totals: a buyer who
+        opened this page from an email after a failed payment is here for one
+        reason, and making them scroll past a summary to find it would be a
+        design that assumes they already know what they owe.
+
+        `shortfallCents`, never the order total — somebody who sent ৳100 of ৳184
+        owes ৳84, and asking for the full price again is asking them to pay
+        twice.
+      */}
+      {canPayNow ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-1 p-5">
+          <div className="flex items-start gap-3">
+            <Wallet
+              className="mt-0.5 size-5 shrink-0 text-accent-text"
+              aria-hidden
+            />
+            <div className="flex flex-col gap-1">
+              <p className="font-medium">
+                {receivedCents > 0
+                  ? `${formatMoney(shortfallCents, order.currency)} still to pay`
+                  : "This order is waiting for payment"}
+              </p>
+              <p className="text-secondary-text text-sm">
+                {receivedCents > 0
+                  ? `We have ${formatMoney(receivedCents, order.currency)} of ${formatMoney(order.totalCents, order.currency)}. Send the rest and we will start packing.`
+                  : `Pay ${formatMoney(order.totalCents, order.currency)} by bKash or Nagad to confirm it.`}{" "}
+                Unpaid orders are cancelled after 24 hours and the items go back
+                on sale.
+              </p>
+            </div>
+          </div>
+          <div>
+            <Button
+              render={
+                <a
+                  href={withAccessToken(
+                    `/api/orders/pay?id=${order.id}`,
+                    accessToken,
+                  )}
+                >
+                  {receivedCents > 0
+                    ? `Pay the remaining ${formatMoney(shortfallCents, order.currency)}`
+                    : `Pay ${formatMoney(order.totalCents, order.currency)}`}
+                </a>
+              }
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/*
+        Why the pay button did not take them anywhere.
+
+        `unavailable` is deliberately shown even when the order is still
+        payable, and the other reasons are not. That looks inconsistent and is
+        the opposite: the other reasons all explain why the button is *gone*,
+        so showing them beside a live button would contradict it — while
+        "we could not reach bKash" is precisely the case where the button is
+        still there and pressing it appeared to do nothing at all.
+      */}
+      {payNotice && (payNotice === "unavailable" ? true : !canPayNow) ? (
+        <div className="flex items-start gap-3 rounded-xl bg-surface-2 p-5">
+          <AlertTriangle
+            className="mt-0.5 size-5 shrink-0 text-tertiary-text"
+            aria-hidden
+          />
+          <p className="text-secondary-text text-sm">
+            {payNotice === "window-closed" || payNotice === "closed"
+              ? "The 24 hours to pay for this order have passed, so it can no longer be paid. Anything you did send is listed below — contact support quoting this order number and a person will sort it out."
+              : payNotice === "covered"
+                ? "This order is already paid for. Nothing more is owed."
+                : payNotice === "offline"
+                  ? "This order is paid on delivery — there is nothing to pay online."
+                  : "We could not reach bKash and Nagad just now. Nothing has changed; try again in a moment."}
+          </p>
         </div>
       ) : null}
 

@@ -1,6 +1,4 @@
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { jommaAppliedPayments, orders } from "@/lib/db/schema";
 
 /**
  * Whether an order has been paid for — across every intent ever raised for it.
@@ -70,6 +68,16 @@ export function coverageOf(input: {
  * reachable at that moment.
  */
 export async function coverageForOrder(orderId: string): Promise<Coverage> {
+  /*
+    Imported here rather than at the top of the file, so that `coverageOf` —
+    the rule that decides an order is paid for — can be imported and tested
+    without an environment. lib/db reaches lib/env, which parses the whole
+    environment at module load, and a pure arithmetic rule should not need a
+    database connection string to be exercised.
+  */
+  const { db } = await import("@/lib/db");
+  const { jommaAppliedPayments, orders } = await import("@/lib/db/schema");
+
   const [order] = await db
     .select({ totalCents: orders.totalCents })
     .from(orders)
