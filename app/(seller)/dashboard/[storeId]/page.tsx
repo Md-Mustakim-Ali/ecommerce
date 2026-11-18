@@ -37,6 +37,12 @@ const SECTIONS: {
     permission: "order.view",
   },
   {
+    href: (id) => `/dashboard/${id}/customers`,
+    label: "Customers",
+    description: "Who buys from you, and their history with this store.",
+    permission: "customer.view",
+  },
+  {
     href: (id) => `/dashboard/${id}/staff`,
     label: "Staff and roles",
     description: "Invite people and decide what they can do.",

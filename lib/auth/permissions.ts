@@ -14,7 +14,11 @@
  * old key unused until every stored role has been migrated off it.
  */
 
-export const PERMISSION_VOCABULARY_VERSION = 3;
+// 4 adds order.payment.view and customer.view. Both are additive, so stored
+// roles stay valid — they simply do not hold the new keys until granted, which
+// is the safe default for two permissions that expose payment records and
+// buyer contact details.
+export const PERMISSION_VOCABULARY_VERSION = 4;
 
 export type PermissionScope = "store" | "platform";
 
@@ -143,6 +147,13 @@ const STORE_PERMISSIONS = [
     group: "Orders",
     label: "Add order notes",
     description: "Write internal notes on an order.",
+  },
+  {
+    key: "customer.view",
+    group: "Orders",
+    label: "See customers",
+    description:
+      "See who has ordered from this store and their history with it. Never their orders from other sellers.",
   },
   {
     key: "customer.contact",

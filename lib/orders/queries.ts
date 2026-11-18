@@ -204,7 +204,21 @@ export async function listOrdersForStore(
     | "delivered"
     | "cancelled"
     | "refunded",
+  /*
+    Narrow to specific sub-orders, for the customer detail page.
+
+    A filter on this query rather than a second one beside it, deliberately.
+    Everything a seller sees about an order — items, note counts, transfers,
+    payment coverage, the store scoping — is assembled here, and a parallel
+    query would have to reproduce all of it and then drift from it. The one
+    that would hurt is the store filter: reproduce that wrong and a seller
+    reads another seller's sales.
+  */
+  only?: string[],
 ) {
+  // An explicit empty list means "no orders", not "no filter".
+  if (only && only.length === 0) return [];
+
   const rows = await db
     .select({
       id: subOrders.id,
@@ -245,6 +259,7 @@ export async function listOrdersForStore(
       and(
         eq(subOrders.storeId, storeId),
         status ? eq(subOrders.status, status) : undefined,
+        only ? inArray(subOrders.id, only) : undefined,
         /**
          * An unconfirmed order is not a sale, and a seller must never see one.
          *

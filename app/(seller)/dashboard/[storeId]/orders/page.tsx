@@ -9,7 +9,7 @@ import { stores } from "@/lib/db/schema";
 import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
 import { listOrdersForStore } from "@/lib/orders/queries";
-import { OrderRow } from "./order-row";
+import { SellerOrderList } from "./order-list";
 
 export const metadata: Metadata = { title: "Orders" };
 
@@ -133,63 +133,11 @@ export default async function StoreOrdersPage({
             : "No orders yet. They land here the moment payment clears."}
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {orders.map((order) => (
-            <li key={order.id}>
-              <OrderRow
-                storeId={storeId}
-                order={{
-                  id: order.id,
-                  status: order.status,
-                  orderNumber: order.orderNumber,
-                  buyerEmail: order.buyerEmail,
-                  buyerPhone: order.buyerPhone,
-                  placedAt: order.placedAt?.toISOString() ?? null,
-                  subtotalCents: order.subtotalCents,
-                  shippingCents: order.shippingCents,
-                  payoutCents: order.payoutCents,
-                  trackingCarrier: order.trackingCarrier,
-                  trackingNumber: order.trackingNumber,
-                  shippingAddress: order.shippingAddress,
-                  noteCount: order.noteCount,
-                  unreadFromBuyer: order.unreadFromBuyer,
-                  orderStatus: order.orderStatus,
-                  paymentMethod: order.paymentMethod,
-                  confirmedAt: order.confirmedAt?.toISOString() ?? null,
-                  orderTotalCents: order.orderTotalCents,
-                  commissionCents: order.commissionCents,
-                  // Withheld entirely when the role cannot see payments — not
-                  // hidden in the component. A value that never reaches the
-                  // browser cannot be read out of the page source.
-                  receivedCents: permissions.payment
-                    ? order.receivedCents
-                    : null,
-                  outstandingCents: permissions.payment
-                    ? order.outstandingCents
-                    : null,
-                  transfers: permissions.payment
-                    ? order.transfers.map((t) => ({
-                        trxId: t.trxId,
-                        senderMsisdn: t.senderMsisdn,
-                        amountCents: t.amountCents,
-                        at: (t.occurredAt ?? t.appliedAt).toISOString(),
-                        matchedBy: t.matchedBy,
-                      }))
-                    : [],
-                  items: order.items.map((item) => ({
-                    id: item.id,
-                    productTitle: item.productTitle,
-                    variantLabel: item.variantLabel,
-                    sku: item.sku,
-                    quantity: item.quantity,
-                    lineTotalCents: item.lineTotalCents,
-                  })),
-                }}
-                permissions={permissions}
-              />
-            </li>
-          ))}
-        </ul>
+        <SellerOrderList
+          storeId={storeId}
+          orders={orders}
+          permissions={permissions}
+        />
       )}
 
       {!Object.values(permissions).some(Boolean) ? (

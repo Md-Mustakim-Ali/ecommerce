@@ -1,5 +1,9 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import {
+  CUSTOMER_GROUP_KEY,
+  CUSTOMER_REAL_ORDER,
+} from "@/lib/orders/customers";
 
 /**
  * Analytics reads.
@@ -341,18 +345,31 @@ export async function platformRatingPrior(): Promise<number> {
   return value === null || value === undefined ? 4 : Number(value);
 }
 
-/** Repeat-purchase counts, so the rate can carry a Wilson interval. */
+/**
+ * Repeat-purchase counts, so the rate can carry a Wilson interval.
+ *
+ * Counts guests. It used to group on `buyer_id` and drop the nulls, which
+ * silently excluded every order placed without an account — and on this shop
+ * guest checkout is the normal case, so the rate was computed over a signed-in
+ * minority and reported as the store's own. A shop whose customers mostly do
+ * not have accounts was told almost nobody came back.
+ *
+ * Groups by the expression in lib/orders/customers.ts, which is the same one
+ * the customers list uses, so this number and that list cannot disagree about
+ * who counts as a person.
+ */
 export async function repeatPurchaseForStore(storeId: string, days = 365) {
   const rows = await db.execute<{ buyers: string; repeat_buyers: string }>(sql`
     with per_buyer as (
-      select o.buyer_id, count(distinct so.id) as orders
+      select ${CUSTOMER_GROUP_KEY} as customer, count(distinct so.id) as orders
       from sub_orders so
       join orders o on o.id = so.order_id
       where so.store_id = ${storeId}
         and so.status not in ('cancelled', 'refunded')
-        and o.buyer_id is not null
+        and ${CUSTOMER_REAL_ORDER}
         and o.placed_at >= current_date - make_interval(days => ${days - 1})
-      group by o.buyer_id
+      group by ${CUSTOMER_GROUP_KEY}
+      having ${CUSTOMER_GROUP_KEY} is not null
     )
     select
       count(*)::text as buyers,
