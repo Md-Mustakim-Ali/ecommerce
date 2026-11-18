@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { auditLog, orders, stores, subOrders } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/email";
 import { shipmentNotice } from "@/lib/email/templates";
+import { deriveOrderStatus } from "@/lib/orders/fulfilment-status";
 
 /**
  * Fulfilment actions for a seller.
@@ -55,29 +56,12 @@ async function syncOrderStatus(
     .from(subOrders)
     .where(eq(subOrders.orderId, orderId));
 
-  const live = rows.filter(
-    (r) => r.status !== "cancelled" && r.status !== "refunded",
-  );
+  const status = deriveOrderStatus(rows.map((r) => r.status));
 
-  if (live.length === 0) {
-    const allRefunded = rows.every((r) => r.status === "refunded");
-    await tx
-      .update(orders)
-      .set({ status: allRefunded ? "refunded" : "cancelled" })
-      .where(eq(orders.id, orderId));
-    return;
-  }
-
-  const done = live.filter(
-    (r) => r.status === "shipped" || r.status === "delivered",
-  );
-
-  const status =
-    done.length === 0
-      ? "paid"
-      : done.length === live.length
-        ? "fulfilled"
-        : "partially_fulfilled";
+  // Null means fulfilment has no opinion — nothing has shipped — so whatever
+  // payment left on this order stays there. See lib/orders/fulfilment-status.ts
+  // for why that is not the same as "paid".
+  if (status === null) return;
 
   await tx.update(orders).set({ status }).where(eq(orders.id, orderId));
 }
