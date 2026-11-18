@@ -42,11 +42,16 @@ export function ProductDetail({
   afterOptions,
   sidebar,
   layout = "page",
+  productId,
+  storeId,
 }: {
   images: DetailImage[];
   attributes: ProductAttribute[];
   variants: PickerVariant[];
   title: string;
+  /** Only for the add-to-cart analytics event; both optional. */
+  productId?: string;
+  storeId?: string;
   /** Handed to the gallery so the hero morphs out of the card that was clicked. */
   morphName?: string;
   stockDisplay?: "never" | "always" | "when_low";
@@ -157,6 +162,8 @@ export function ProductDetail({
       >
         {beforePrice}
         <OptionPicker
+          productId={productId}
+          storeId={storeId}
           attributes={attributes}
           variants={variants}
           stockDisplay={stockDisplay}

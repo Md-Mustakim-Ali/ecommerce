@@ -5,6 +5,7 @@ import { TrackProductView } from "@/components/analytics/tracker";
 import { PlacementSlot } from "@/components/content/placement-slot";
 import { ProductDetail } from "@/components/shop/product-detail";
 import { RatingStars } from "@/components/shop/rating-stars";
+import { ReportButton } from "@/components/shop/report-button";
 import { ReviewSection } from "@/components/shop/review-section";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -165,6 +166,8 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
         <PlacementSlot route={routeContext} slot="above_content" />
 
         <ProductDetail
+          productId={product.id}
+          storeId={product.storeId}
           title={product.title}
           morphName={productMorphName(product.slug)}
           stockDisplay={product.stockDisplay}
@@ -252,6 +255,14 @@ export default async function ProductPage({ params }: PageProps<"/p/[slug]">) {
           breakdown={breakdown}
           reviewable={reviewable}
         />
+      </div>
+      {/*
+        Deliberately at the foot of the page and deliberately small. The people
+        who need it will look for it; putting it near Add to cart invites idle
+        clicking, and a frivolous report costs a seller their time.
+      */}
+      <div className="mx-auto w-full max-w-6xl px-4 pb-8 sm:px-6">
+        <ReportButton targetType="product" targetId={product.id} />
       </div>
     </>
   );

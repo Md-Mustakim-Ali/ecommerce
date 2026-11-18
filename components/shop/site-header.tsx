@@ -10,6 +10,7 @@ import { CategoryDrawer } from "@/components/shop/category-drawer";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { track } from "@/lib/analytics/track";
 import type { CategoryNode } from "@/lib/catalog/queries";
 import type { Theme } from "@/lib/theme";
 
@@ -46,6 +47,18 @@ export function SiteHeader({
   function search(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const q = String(new FormData(event.currentTarget).get("q") ?? "").trim();
+
+    /*
+      Only a real search. An empty submit is somebody pressing enter in an
+      empty box, and counting it would put "" at the top of the most-searched
+      list for ever.
+
+      The term is lower-cased and trimmed at the query, not here — what is
+      stored is what they typed, so a future look at the raw stream shows the
+      actual words rather than a normalised guess at them.
+    */
+    if (q) track({ type: "search", meta: { q: q.slice(0, 120) } });
+
     router.push(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
   }
 

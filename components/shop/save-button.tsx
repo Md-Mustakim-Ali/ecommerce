@@ -4,6 +4,7 @@ import { Heart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toggleSavedAction } from "@/lib/actions/saved";
+import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,6 +43,13 @@ export function SaveButton({
       const result = await toggleSavedAction({ productId });
       if (result.ok) {
         setSaved(result.saved);
+        // Both directions. A product people save and then unsave is a
+        // different story from one nobody saves, and only one of those shows
+        // up if removals go uncounted.
+        track({
+          type: result.saved ? "wishlist_add" : "wishlist_remove",
+          productId,
+        });
         return;
       }
       setSaved(!next);

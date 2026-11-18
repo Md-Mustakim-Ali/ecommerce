@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { useCart } from "@/components/shop/cart-provider";
 import { Button } from "@/components/ui/button";
 import { addToCartAction } from "@/lib/actions/cart";
+import { track } from "@/lib/analytics/track";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,12 +20,22 @@ import { cn } from "@/lib/utils";
  */
 export function AddToCart({
   variantId,
+  productId,
+  storeId,
   disabled,
   soldOut,
   className,
   size = "lg",
 }: {
   variantId: string | null;
+  /*
+    Only for the analytics event. Optional because the cart itself needs
+    neither — it works from the variant — and a caller that cannot supply them
+    should still be able to render a working button rather than be blocked by
+    a reporting concern.
+  */
+  productId?: string;
+  storeId?: string;
   disabled?: boolean;
   soldOut?: boolean;
   className?: string;
@@ -54,6 +65,11 @@ export function AddToCart({
         setError(result.message);
         return;
       }
+
+      // After the server agreed, never on the optimistic bump above: an add
+      // that failed is not intent, it is a bug, and counting it would inflate
+      // exactly the products whose stock keeps running out.
+      track({ type: "add_to_cart", variantId, productId, storeId });
 
       sync(result.cart);
       setOpen(true);

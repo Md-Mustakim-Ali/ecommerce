@@ -56,6 +56,8 @@ export function OptionPicker({
   stockDisplay = "when_low",
   lowStockThreshold = 5,
   onSelectionChange,
+  productId,
+  storeId,
 }: {
   attributes: ProductAttribute[];
   variants: PickerVariant[];
@@ -63,6 +65,9 @@ export function OptionPicker({
   stockDisplay?: StockDisplay;
   lowStockThreshold?: number;
   onSelectionChange?: (selection: Record<string, string>) => void;
+  /** Passed straight through to AddToCart for the analytics event. */
+  productId?: string;
+  storeId?: string;
 }) {
   const variantAttributes = useMemo(
     () => attributes.filter((a) => a.role === "variant"),
@@ -292,6 +297,8 @@ export function OptionPicker({
         })()}
 
         <AddToCart
+          productId={productId}
+          storeId={storeId}
           variantId={isComplete ? (selected?.id ?? null) : null}
           soldOut={isComplete && soldOut}
         />

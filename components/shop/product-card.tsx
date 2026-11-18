@@ -130,6 +130,13 @@ export function ProductCard({
             no photo — nothing in it but an empty div.
           */}
           <Link
+            /*
+              Counted through the delegated data-track listener rather than an
+              onClick: this is a navigation, and a handler racing the router is
+              how a click gets recorded on some browsers and not others.
+            */
+            data-track="product-card"
+            data-track-product={product.id}
             href={`/p/${product.slug}`}
             prefetch
             aria-hidden
