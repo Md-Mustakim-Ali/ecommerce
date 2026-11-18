@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sweepAnalyticsEvents } from "@/lib/analytics/ingest";
 import { secretsMatch } from "@/lib/media/crypto";
 import { expireUnconfirmedOrders } from "@/lib/orders/confirmation";
 
@@ -38,5 +39,20 @@ export async function POST(request: Request) {
   }
 
   const result = await expireUnconfirmedOrders();
-  return NextResponse.json({ ok: true, ...result });
+
+  /*
+    Raw analytics events past their retention window, on the same poke.
+
+    Deliberately not a second endpoint and a second scheduled call: each run
+    wakes a sleeping free instance and that wake is what spends the workspace's
+    instance-hours. The two jobs share nothing but a clock, and this one is a
+    single DELETE.
+
+    The daily counters are NOT touched — they are the history the grids read.
+    Only the per-event detail goes, which exists for looking into a number that
+    seems wrong and stops being useful long before it stops being expensive.
+  */
+  const analytics = await sweepAnalyticsEvents();
+
+  return NextResponse.json({ ok: true, ...result, ...analytics });
 }

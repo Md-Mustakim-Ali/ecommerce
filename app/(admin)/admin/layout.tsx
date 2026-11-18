@@ -43,6 +43,11 @@ const NAV: { href: string; label: string; permission: PlatformPermission }[] = [
     permission: "platform.finance.report",
   },
   {
+    href: "/admin/heat",
+    label: "Heat",
+    permission: "platform.order.view",
+  },
+  {
     href: "/admin/orders",
     label: "Orders",
     permission: "platform.order.view",

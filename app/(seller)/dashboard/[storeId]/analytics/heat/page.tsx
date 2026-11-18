@@ -1,13 +1,19 @@
 import { ArrowLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DemandHeatMap, IntentHeatMap } from "@/components/analytics/heat-map";
-import { Button } from "@/components/ui/button";
 import {
-  demandHeat,
-  type HeatDimension,
-  intentHeat,
-} from "@/lib/analytics/heat";
+  DemandHeatMap,
+  FunnelHeatMap,
+  RankedHeat,
+} from "@/components/analytics/heat-map";
+import { Button } from "@/components/ui/button";
+import { demandHeat, type HeatDimension } from "@/lib/analytics/heat";
+import {
+  behaviourHeat,
+  clickHeat,
+  funnelHeat,
+} from "@/lib/analytics/heat-behaviour";
+import { reportedProducts } from "@/lib/analytics/reports-heat";
 import { requireStorePermission } from "@/lib/auth/access";
 
 export const metadata: Metadata = { title: "Heat" };
@@ -28,25 +34,18 @@ const DIMENSIONS: { key: HeatDimension; label: string; blurb: string }[] = [
     label: "Categories",
     blurb: "Where your demand sits in the catalogue.",
   },
-  {
-    key: "tag",
-    label: "Tags",
-    blurb: "Which themes buyers respond to.",
-  },
+  { key: "tag", label: "Tags", blurb: "Which themes buyers respond to." },
 ];
 
 /**
- * Demand heat, sliced four ways, plus intent against purchase.
+ * Everything this store can be measured by, in one place.
  *
- * A separate page rather than another block on Analytics, which is already
- * long — but reached from there and sharing its palette and its queries, so it
- * is a section of that surface rather than a rival to it.
+ * Four demand grids, what people looked at, the funnel from view to purchase,
+ * which controls get pressed, and what has been complained about.
  *
- * Everything here is derived from what buyers did: bought, saved, basketed,
- * returned. Nothing counts views or clicks, because nothing records them — see
- * the note at the foot of the page, which says so on the page rather than only
- * in a comment, since a seller reading a "heat map" will reasonably assume it
- * includes browsing.
+ * Two permissions rather than one. Sales figures are `report.sales.view`, which
+ * the page requires; complaints are `report.view`, checked separately, so a
+ * store can hand somebody the numbers without handing them the grievances.
  */
 export default async function HeatPage({
   params,
@@ -55,16 +54,20 @@ export default async function HeatPage({
   const { storeId } = await params;
   const query = await searchParams;
 
-  await requireStorePermission(storeId, "report.sales.view");
+  const access = await requireStorePermission(storeId, "report.sales.view");
+  const canSeeReports = access.permissions.has("report.view");
 
   const raw = Array.isArray(query.by) ? query.by[0] : query.by;
   const dimension: HeatDimension =
     DIMENSIONS.find((entry) => entry.key === raw)?.key ?? "product";
   const weeks = 12;
 
-  const [matrix, intent] = await Promise.all([
+  const [demand, views, funnel, clicks, complaints] = await Promise.all([
     demandHeat(storeId, dimension, weeks, 25),
-    intentHeat(storeId, 90, 25),
+    behaviourHeat(storeId, "product_view", weeks, 25),
+    funnelHeat(storeId, 90, 25),
+    clickHeat(storeId, 30, 15),
+    canSeeReports ? reportedProducts(storeId, 180, 15) : Promise.resolve([]),
   ]);
 
   const active = DIMENSIONS.find((entry) => entry.key === dimension);
@@ -85,7 +88,7 @@ export default async function HeatPage({
       <div className="flex flex-col gap-1">
         <h1 className="font-semibold text-xl tracking-tight">Heat</h1>
         <p className="text-secondary-text text-sm">
-          The last {weeks} weeks. Darker means more units sold that week.
+          The last {weeks} weeks. Darker means more.
         </p>
       </div>
 
@@ -96,8 +99,6 @@ export default async function HeatPage({
             key={entry.key}
             href={`/dashboard/${storeId}/analytics/heat?by=${entry.key}`}
             aria-current={entry.key === dimension ? "page" : undefined}
-            // Matching the range pills on Analytics exactly, rather than
-            // inventing a second look for the same control.
             className={`rounded-full px-3 py-1.5 font-medium text-sm ${
               entry.key === dimension
                 ? "bg-surface-3 text-primary-text"
@@ -109,35 +110,75 @@ export default async function HeatPage({
         ))}
       </nav>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-1 p-5">
-        <div className="flex flex-col gap-1">
-          <h2 className="font-medium">{active?.label} by week</h2>
-          <p className="text-secondary-text text-sm">{active?.blurb}</p>
-        </div>
-        <DemandHeatMap matrix={matrix} />
-      </section>
+      <Section title={`${active?.label} sold by week`} blurb={active?.blurb}>
+        <DemandHeatMap matrix={demand} />
+      </Section>
 
-      <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-1 p-5">
-        <div className="flex flex-col gap-1">
-          <h2 className="font-medium">Wanted against bought</h2>
-          <p className="text-secondary-text text-sm">
-            The last 90 days. Where interest and sales disagree is where there
-            is something to fix.
-          </p>
-        </div>
-        <IntentHeatMap heat={intent} />
-      </section>
+      <Section
+        title="Looked at by week"
+        blurb="People who opened each product page. Counts people, not page loads — one person refreshing six times is one."
+      >
+        <DemandHeatMap matrix={views} />
+      </Section>
 
-      {/*
-        Said out loud, because "heat map" sets an expectation this cannot meet
-        yet and a seller should not have to discover the gap by wondering why
-        their best-viewed product is missing.
-      */}
-      <p className="text-tertiary-text text-xs">
-        These are built from what buyers did — bought, saved, basketed,
-        returned. Page views and clicks are not counted anywhere, because
-        nothing records them yet.
-      </p>
+      <Section
+        title="From looking to buying"
+        blurb="The last 90 days. Where the drop happens tells you which problem it is."
+      >
+        <FunnelHeatMap heat={funnel} />
+      </Section>
+
+      <Section
+        title="What gets pressed"
+        blurb="The last 30 days. Only controls somebody marked worth counting."
+      >
+        <RankedHeat
+          rows={clicks.map((row) => ({
+            label: row.label,
+            value: row.clicks,
+            secondary: row.people,
+          }))}
+          unit="clicks"
+          secondaryLabel="people"
+        />
+      </Section>
+
+      {canSeeReports ? (
+        <Section
+          title="Complained about"
+          blurb="The last 180 days. Open ones are still with the platform."
+        >
+          <RankedHeat
+            rows={complaints.map((row) => ({
+              label: `${row.label} · ${Object.keys(row.reasons).join(", ")}`,
+              value: row.total,
+              secondary: row.open,
+            }))}
+            unit="reports"
+            secondaryLabel="open"
+          />
+        </Section>
+      ) : null}
     </div>
+  );
+}
+
+function Section({
+  title,
+  blurb,
+  children,
+}: {
+  title: string;
+  blurb?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-1 p-5">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-medium">{title}</h2>
+        {blurb ? <p className="text-secondary-text text-sm">{blurb}</p> : null}
+      </div>
+      {children}
+    </section>
   );
 }

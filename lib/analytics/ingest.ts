@@ -182,10 +182,19 @@ export async function sweepAnalyticsEvents(
     select count(*)::text from gone
   `);
 
-  // Session claims expire with them; a claim for a past day can never be hit.
+  /*
+    Session claims expire with the events; a claim for a past day can never be
+    hit again.
+
+    `make_interval` rather than subtracting the number directly. A bound
+    parameter arrives untyped, so `date - $2` gave Postgres `date - unknown`
+    and it refused with "operator does not exist: date < integer" — which reads
+    like a schema problem and is actually a missing cast.
+  */
   await db.execute(sql`
     delete from analytics_daily_sessions
-    where day < (now() at time zone ${SHOP_TIME_ZONE})::date - ${retentionDays}
+    where day < (now() at time zone ${SHOP_TIME_ZONE})::date
+                - make_interval(days => ${retentionDays})
   `);
 
   return { deleted: Number(result[0]?.count ?? 0) };
