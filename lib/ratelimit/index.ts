@@ -25,7 +25,9 @@ export type Bucket =
   | "sign-up"
   | "checkout"
   | "email"
-  | "order-code";
+  | "order-code"
+  | "events"
+  | "report";
 
 type Rule = { limit: number; windowSeconds: number; message: string };
 
@@ -72,6 +74,33 @@ const RULES: Record<Bucket, Rule> = {
     years. A buyer copying a code out of an email needs one attempt, or two
     with a typo.
   */
+  /*
+    Analytics ingest, keyed on the session rather than the address.
+
+    Generous, because it is a batch endpoint on a busy page: a shopper browsing
+    hard flushes maybe one batch every few seconds, and 120 an hour is far more
+    than a person produces and far less than a script needs to move a number.
+    Exceeding it drops the batch silently — a shopper must never learn that
+    analytics exist, let alone that they were throttled.
+  */
+  /*
+    Filing reports, keyed on the reporter.
+
+    Ten a day is far more than a shopper raises and far fewer than somebody
+    working through a rival's catalogue needs. The partial unique index already
+    stops the same person reporting the same thing twice, so this is about
+    breadth rather than repetition.
+  */
+  report: {
+    limit: 10,
+    windowSeconds: 24 * 60 * 60,
+    message: "You have reported a lot today. Try again tomorrow.",
+  },
+  events: {
+    limit: 120,
+    windowSeconds: 60 * 60,
+    message: "Too many events.",
+  },
   "order-code": {
     limit: 8,
     windowSeconds: 15 * 60,

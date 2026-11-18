@@ -14,11 +14,12 @@
  * old key unused until every stored role has been migrated off it.
  */
 
+// 5 adds report.view, platform.report.view and platform.report.resolve.
 // 4 adds order.payment.view and customer.view. Both are additive, so stored
 // roles stay valid — they simply do not hold the new keys until granted, which
 // is the safe default for two permissions that expose payment records and
 // buyer contact details.
-export const PERMISSION_VOCABULARY_VERSION = 4;
+export const PERMISSION_VOCABULARY_VERSION = 5;
 
 export type PermissionScope = "store" | "platform";
 
@@ -147,6 +148,13 @@ const STORE_PERMISSIONS = [
     group: "Orders",
     label: "Add order notes",
     description: "Write internal notes on an order.",
+  },
+  {
+    key: "report.view",
+    group: "Orders",
+    label: "See reports",
+    description:
+      "See complaints buyers have raised about this store's products and reviews.",
   },
   {
     key: "customer.view",
@@ -379,6 +387,20 @@ const PLATFORM_PERMISSIONS = [
     group: "Moderation",
     label: "Moderate products",
     description: "Take down a product that breaks policy.",
+  },
+  {
+    key: "platform.report.view",
+    group: "Moderation",
+    label: "View reports",
+    description: "See complaints buyers have raised, across every store.",
+  },
+  {
+    key: "platform.report.resolve",
+    group: "Moderation",
+    label: "Resolve reports",
+    description:
+      "Uphold or dismiss a report. Upholding one does not by itself remove anything.",
+    sensitive: true,
   },
   {
     key: "platform.review.moderate",

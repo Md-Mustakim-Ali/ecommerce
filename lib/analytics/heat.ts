@@ -261,8 +261,15 @@ export async function intentHeat(
   return { rows: mapped, peaks };
 }
 
-/** Shapes the flat SQL result into the grid the component draws. */
-function toMatrix(
+/**
+ * Shapes the flat SQL result into the grid the component draws.
+ *
+ * Exported so ./heat-behaviour.ts produces grids of exactly the same shape.
+ * The alternative — a second shaping function over there — is how one of the
+ * two ends up omitting empty weeks and drawing an unbroken run of trade across
+ * a gap.
+ */
+export function toMatrix(
   dimension: HeatDimension,
   rows: {
     row_key: string | null;

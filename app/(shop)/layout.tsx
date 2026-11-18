@@ -1,3 +1,4 @@
+import { Tracker } from "@/components/analytics/tracker";
 import { BottomBar } from "@/components/shop/bottom-bar";
 import { CartProvider } from "@/components/shop/cart-provider";
 import { SiteHeader } from "@/components/shop/site-header";
@@ -46,6 +47,12 @@ export default async function ShopLayout({ children }: LayoutProps<"/">) {
         />
 
         <main className="flex-1 pb-24 md:pb-12">{children}</main>
+        {/*
+          Once, at the root. Page views have to be recorded on client-side
+          navigations too, and a per-page effect would miss every one of them
+          after the first load.
+        */}
+        <Tracker />
 
         <footer
           data-print-hide
