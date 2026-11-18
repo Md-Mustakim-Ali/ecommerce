@@ -30,6 +30,7 @@ import { displayPhone } from "@/lib/validation/phone";
 import { ConfirmCodeForm } from "./confirm-code";
 import { DemoPayButton } from "./demo-pay";
 import { MessageThread } from "./message-thread";
+import { PayButton } from "./pay-button";
 import { PaymentStatus } from "./payment-status";
 
 export const metadata: Metadata = { title: "Order" };
@@ -273,20 +274,16 @@ export default async function OrderPage({
             </div>
           </div>
           <div>
-            <Button
-              render={
-                <a
-                  href={withAccessToken(
-                    `/api/orders/pay?id=${order.id}`,
-                    accessToken,
-                  )}
-                >
-                  {receivedCents > 0
-                    ? `Pay the remaining ${formatMoney(shortfallCents, order.currency)}`
-                    : `Pay ${formatMoney(order.totalCents, order.currency)}`}
-                </a>
-              }
-            />
+            <PayButton
+              href={withAccessToken(
+                `/api/orders/pay?id=${order.id}`,
+                accessToken,
+              )}
+            >
+              {receivedCents > 0
+                ? `Pay the remaining ${formatMoney(shortfallCents, order.currency)}`
+                : `Pay ${formatMoney(order.totalCents, order.currency)}`}
+            </PayButton>
           </div>
         </div>
       ) : null}

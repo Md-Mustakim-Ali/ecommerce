@@ -174,6 +174,19 @@ export function PaymentStatus({
     underpaid is false in the one situation where being wrong costs them the
     order — Jomma holds the intent open for exactly this, so the balance is
     payable, and nothing was telling them the amount or where to send it.
+
+    ── Why this card no longer has a button ────────────────────────────────
+
+    It used to offer "Pay the balance", linking to `state.payUrl`. That is this
+    intent's pay page, and for the buyer most likely to be reading this card it
+    was already dead: somebody who part-paid and let the clock run out gets a
+    live-looking link to an expired page, presses it, and it fails.
+
+    Paying is owned by one control now — the panel on the order page below,
+    which goes through /api/orders/pay and works the amount out server-side,
+    reusing a live intent or raising a new one for the balance. Two buttons
+    that claim to do the same job, one of them wrong, is worse than one that is
+    right. This card keeps the job it is actually good at: watching.
   */
   if (state?.ok && state.intentStatus === "partial") {
     return (
@@ -193,16 +206,9 @@ export function PaymentStatus({
               using reference <span className="font-mono">{state.refCode}</span>
             </>
           ) : null}
-          , and this page will update on its own.
+          , and this page will update on its own — or use the payment button
+          below to start again.
         </p>
-        {state.payUrl ? (
-          <div className="pt-1">
-            <Button
-              size="sm"
-              render={<a href={state.payUrl}>Pay the balance</a>}
-            />
-          </div>
-        ) : null}
       </Card>
     );
   }

@@ -268,11 +268,24 @@ export async function syncOrderPayment(
     shortfallCents: intent.shortfall,
     excessCents: intent.excess,
     refCode: intent.ref_code,
-    // Only worth offering while there is something left to pay, and only while
-    // it can still be paid. A matched intent's pay page has nothing for the
-    // buyer to do, and a dead one's would take their money into a void.
+    /*
+      Only while this intent can still take money.
+
+      Keyed on `deadlinePassed`, NOT on `expired`, and the difference was a real
+      bug. `expired` carries a deliberate exception — an intent past its
+      deadline holding a payment is not written off, because money that arrived
+      is a reconciliation problem rather than a lapse. That exception is right
+      for deciding whether to give up on an intent and wrong for deciding
+      whether to link to it: a buyer who part-paid and let the clock run out is
+      exactly the person `expired` keeps false, so they were handed a live
+      looking link to a dead pay page, and it failed when they pressed it.
+
+      Anyone in that position needs a *new* intent for the balance, which is
+      what /api/orders/pay does. Nothing here should offer them a URL at all.
+    */
     payUrl:
-      !expired && (intent.status === "open" || intent.status === "partial")
+      !deadlinePassed &&
+      (intent.status === "open" || intent.status === "partial")
         ? jomma().payUrl(intentId)
         : null,
     expiresAt: intent.expires_at,

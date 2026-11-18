@@ -407,4 +407,50 @@ describe("syncOrderPayment", () => {
 
     expect(snapshot.payUrl).toBeNull();
   });
+
+  /**
+   * The link that was handed out dead.
+   *
+   * `expired` deliberately stays false for an intent past its deadline that is
+   * holding money — writing that off would tell a buyer nothing arrived when
+   * something did. payUrl used to be keyed on `expired`, so the one buyer most
+   * likely to need a payment link (part-paid, clock run out) was the one
+   * offered a link to a pay page that no longer works. They pressed it and it
+   * failed.
+   *
+   * Their route is a new intent for the balance, via /api/orders/pay. Nothing
+   * here should offer a URL at all.
+   */
+  it("offers no pay link for a lapsed intent, even one holding money", async () => {
+    intentsGet.mockResolvedValue(
+      makeIntent({
+        status: "partial",
+        received_amount: 11000,
+        shortfall: 700,
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+      }),
+    );
+
+    const snapshot = await syncOrderPayment(ORDER_ID);
+
+    expect(snapshot.payUrl).toBeNull();
+    // Still not written off — the money is real and the buyer must see it.
+    expect(snapshot.expired).toBe(false);
+    expect(snapshot.receivedCents).toBe(11000);
+  });
+
+  it("still offers one while the intent is genuinely live", async () => {
+    intentsGet.mockResolvedValue(
+      makeIntent({
+        status: "partial",
+        received_amount: 11000,
+        shortfall: 700,
+        expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      }),
+    );
+
+    const snapshot = await syncOrderPayment(ORDER_ID);
+
+    expect(snapshot.payUrl).not.toBeNull();
+  });
 });

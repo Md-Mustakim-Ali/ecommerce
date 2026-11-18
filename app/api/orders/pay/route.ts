@@ -37,6 +37,29 @@ function publicUrl(path: string): URL {
 }
 
 export async function GET(request: Request) {
+  /*
+    Timed, in segments, because the first time this was slow nobody could say
+    where.
+
+    A buyer reported it hanging for minutes. Jomma's logs showed every request
+    it received answered in 15-200ms, and its logs showed a six-minute window
+    where it received nothing at all — so the wait was on this side of the
+    call, before it was made. Which of the three round trips before it was
+    responsible could not be established, because none of them was measured.
+    Two aborted requests in the shop's log were the only trace, and an abort
+    tells you a person gave up, not what they were waiting for.
+
+    Both services are free instances that sleep after fifteen minutes idle, and
+    the database scales to zero too, so "something was cold" is the likely
+    answer — but likely is not measured. These three numbers make the next
+    occurrence answerable instead of arguable.
+  */
+  const startedAt = Date.now();
+  const timings: Record<string, number> = {};
+  const mark = (label: string) => {
+    timings[label] = Date.now() - startedAt;
+  };
+
   const params = new URL(request.url).searchParams;
   const orderId = params.get("id");
   const token = params.get("t");
@@ -53,8 +76,10 @@ export async function GET(request: Request) {
     .from(orders)
     .where(eq(orders.id, orderId))
     .limit(1);
+  mark("order");
 
   const session = await getSession();
+  mark("session");
 
   // Same answer for "no such order" and "not yours". A uuid is not
   // authorisation, and telling a stranger which of their guesses exist is the
@@ -64,6 +89,18 @@ export async function GET(request: Request) {
   }
 
   const resumed = await resumePayment(order.id);
+  mark("resume");
+
+  /*
+    One line, always, whatever the outcome. A slow success is the case that
+    matters here and it is the one a failure-only log would miss entirely.
+  */
+  console.info("[pay] resume", {
+    orderId: order.id,
+    outcome: resumed.kind,
+    totalMs: Date.now() - startedAt,
+    ...timings,
+  });
 
   if (resumed.kind === "pay") return NextResponse.redirect(resumed.payUrl);
 
