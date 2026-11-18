@@ -65,6 +65,16 @@ export default async function StoreOrdersPage({
     refund: access.permissions.has("order.refund"),
     note: access.permissions.has("order.note"),
     contact: access.permissions.has("customer.contact"),
+    /*
+      Its own permission rather than folded into order.view.
+
+      A packer needs the address and the SKUs; they do not need the number the
+      buyer's money came from or a transaction id. Splitting it means a store
+      can build a role that ships parcels without handing over payment records,
+      which is the whole point of custom roles. Owners short-circuit every
+      permission, so nothing changes for them.
+    */
+    payment: access.permissions.has("order.payment.view"),
   };
 
   const revenue = orders
@@ -143,6 +153,29 @@ export default async function StoreOrdersPage({
                   shippingAddress: order.shippingAddress,
                   noteCount: order.noteCount,
                   unreadFromBuyer: order.unreadFromBuyer,
+                  orderStatus: order.orderStatus,
+                  paymentMethod: order.paymentMethod,
+                  confirmedAt: order.confirmedAt?.toISOString() ?? null,
+                  orderTotalCents: order.orderTotalCents,
+                  commissionCents: order.commissionCents,
+                  // Withheld entirely when the role cannot see payments — not
+                  // hidden in the component. A value that never reaches the
+                  // browser cannot be read out of the page source.
+                  receivedCents: permissions.payment
+                    ? order.receivedCents
+                    : null,
+                  outstandingCents: permissions.payment
+                    ? order.outstandingCents
+                    : null,
+                  transfers: permissions.payment
+                    ? order.transfers.map((t) => ({
+                        trxId: t.trxId,
+                        senderMsisdn: t.senderMsisdn,
+                        amountCents: t.amountCents,
+                        at: (t.occurredAt ?? t.appliedAt).toISOString(),
+                        matchedBy: t.matchedBy,
+                      }))
+                    : [],
                   items: order.items.map((item) => ({
                     id: item.id,
                     productTitle: item.productTitle,

@@ -1,6 +1,12 @@
 "use client";
 
-import { ChevronDown, FileText, Loader2, MessageSquare } from "lucide-react";
+import {
+  ChevronDown,
+  FileText,
+  Loader2,
+  MessageSquare,
+  Wallet,
+} from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -14,9 +20,11 @@ import {
   shipOrderAction,
 } from "@/lib/actions/fulfilment";
 import { requestRefundAction } from "@/lib/actions/refunds";
+import { formatDateTime } from "@/lib/datetime/format";
 import type { AddressSnapshot } from "@/lib/db/schema";
 import { PLATFORM_CURRENCY } from "@/lib/money/currency";
 import { formatMoney } from "@/lib/money/format";
+import { displayPhone } from "@/lib/validation/phone";
 import { OrderThread } from "./order-thread";
 
 type Item = {
@@ -51,6 +59,38 @@ export type SellerOrder = {
   items: Item[];
   noteCount: number;
   unreadFromBuyer: number;
+
+  /*
+    The parent order's own state, which is not this sub-order's.
+
+    `status` above tracks fulfilment of this seller's part. This one carries
+    whether the money arrived — and a seller deciding whether to pack something
+    needs both. They disagree constantly and legitimately: a sub-order sits
+    `pending` while the order says `paid`, and on cash on delivery the order
+    stays `pending` for days by design.
+  */
+  orderStatus: string;
+  /** "manual" is cash on delivery; anything else settles through Jomma. */
+  paymentMethod: string | null;
+  /** When the buyer proved their contact. Null when they never had to. */
+  confirmedAt: string | null;
+  /** The whole cart, which on a multi-seller order is more than this part. */
+  orderTotalCents: number;
+  commissionCents: number;
+
+  /*
+    Null when the role cannot see payments — withheld by the server rather than
+    hidden here, so it never reaches the browser at all.
+  */
+  receivedCents: number | null;
+  outstandingCents: number | null;
+  transfers: {
+    trxId: string | null;
+    senderMsisdn: string | null;
+    amountCents: number;
+    at: string;
+    matchedBy: string;
+  }[];
 };
 
 const STATUS_BADGE: Record<
@@ -93,6 +133,7 @@ export function OrderRow({
     refund: boolean;
     note: boolean;
     contact: boolean;
+    payment: boolean;
   };
 }) {
   const [open, setOpen] = useState(false);
@@ -105,6 +146,22 @@ export function OrderRow({
   const badge = STATUS_BADGE[order.status];
   const units = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const closed = order.status === "cancelled" || order.status === "refunded";
+
+  /*
+    Is it safe to put this in a box?
+
+    The single most useful thing this row was not telling anyone. Cash on
+    delivery is collected at the door, so `pending` is its normal state and
+    shipping it is correct. A Jomma order sitting `pending` means nobody has
+    paid yet, and shipping that is giving away stock. Same word, opposite
+    meaning, and until now the seller saw only the word.
+  */
+  const cashOnDelivery = (order.paymentMethod ?? "manual") === "manual";
+  const settled =
+    order.orderStatus === "paid" ||
+    order.orderStatus === "fulfilled" ||
+    order.orderStatus === "partially_fulfilled";
+  const awaitingMoney = !cashOnDelivery && !settled;
 
   function run(action: () => Promise<{ ok: boolean; message: string }>) {
     setError(null);
@@ -140,12 +197,31 @@ export function OrderRow({
             <span className="block truncate text-secondary-text text-xs">
               {units} {units === 1 ? "item" : "items"} ·{" "}
               {order.buyerEmail ?? order.buyerPhone}
-              {order.placedAt
-                ? ` · ${new Date(order.placedAt).toLocaleDateString()}`
-                : ""}
+              {order.placedAt ? ` · ${formatDateTime(order.placedAt)}` : ""}
             </span>
           </span>
         </button>
+
+        {/*
+          Visible without expanding, because it changes whether the next action
+          is safe. `critical` is not decoration here: shipping an unpaid prepaid
+          order is stock leaving for nothing.
+        */}
+        {awaitingMoney ? (
+          <Badge variant="critical" className="gap-1">
+            <Wallet aria-hidden className="size-3" />
+            Unpaid
+          </Badge>
+        ) : cashOnDelivery ? (
+          <Badge
+            variant="outline"
+            className="gap-1"
+            title="Collect on delivery"
+          >
+            <Wallet aria-hidden className="size-3" />
+            COD
+          </Badge>
+        ) : null}
 
         {/*
           An unread buyer message is the one thing here that needs answering,
@@ -311,6 +387,124 @@ export function OrderRow({
                 </li>
               ))}
             </ul>
+
+            {/*
+              Payment, in full.
+
+              Gated on its own permission: a role that packs parcels needs the
+              address and the SKUs, not the number somebody's money came from.
+              When the role lacks it the server sends nothing, so there is
+              nothing here to hide.
+
+              The amounts are deliberately of the WHOLE order, and labelled so.
+              A buyer pays for the cart in one transfer, so on a two-seller
+              order both sellers are looking at the same money — what this
+              seller is owed out of it is the payout line, which is a different
+              question and answered separately below.
+            */}
+            {permissions.payment ? (
+              <section className="flex flex-col gap-2 rounded-md bg-surface-2 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="font-medium text-sm">Payment</h4>
+                  <span className="text-tertiary-text text-xs">
+                    {cashOnDelivery
+                      ? "Cash on delivery"
+                      : `bKash / Nagad · order is ${order.orderStatus}`}
+                  </span>
+                </div>
+
+                {cashOnDelivery ? (
+                  <p className="text-secondary-text text-xs">
+                    Collected at the door. Nothing is recorded here until the
+                    courier integration reports it, so this order stays
+                    <span className="font-medium"> pending</span> even after it
+                    is delivered — that is expected, not a fault.
+                  </p>
+                ) : (
+                  <dl className="flex flex-col gap-1 text-xs">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-secondary-text">
+                        Order total (all sellers)
+                      </dt>
+                      <dd className="tabular">
+                        {formatMoney(order.orderTotalCents, PLATFORM_CURRENCY)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-secondary-text">Received</dt>
+                      <dd className="tabular">
+                        {formatMoney(
+                          order.receivedCents ?? 0,
+                          PLATFORM_CURRENCY,
+                        )}
+                      </dd>
+                    </div>
+                    {order.outstandingCents ? (
+                      <div className="flex justify-between gap-3 font-medium text-critical">
+                        <dt>Still owed</dt>
+                        <dd className="tabular">
+                          {formatMoney(
+                            order.outstandingCents,
+                            PLATFORM_CURRENCY,
+                          )}
+                        </dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                )}
+
+                {/*
+                  Every transfer, with its transaction id. This is the first
+                  thing either side reaches for when a payment is disputed, and
+                  a seller being asked "I paid, where is my order" previously
+                  had nothing to check it against.
+                */}
+                {order.transfers.length > 0 ? (
+                  <ul className="flex flex-col gap-1 border-border border-t pt-2">
+                    {order.transfers.map((transfer) => (
+                      <li
+                        key={`${transfer.trxId ?? "no-trx"}-${transfer.at}`}
+                        className="flex flex-wrap justify-between gap-x-3 text-xs"
+                      >
+                        <span className="flex min-w-0 flex-col">
+                          <span className="font-mono">
+                            {transfer.trxId ?? "No transaction id"}
+                          </span>
+                          <span className="text-tertiary-text">
+                            {transfer.senderMsisdn
+                              ? `From ${displayPhone(transfer.senderMsisdn)} · `
+                              : ""}
+                            {formatDateTime(transfer.at)}
+                            {transfer.matchedBy !== "automatic"
+                              ? ` · matched by ${transfer.matchedBy}`
+                              : ""}
+                          </span>
+                        </span>
+                        <span className="tabular shrink-0">
+                          {formatMoney(transfer.amountCents, PLATFORM_CURRENCY)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : !cashOnDelivery ? (
+                  <p className="border-border border-t pt-2 text-tertiary-text text-xs">
+                    No money has arrived for this order yet.
+                  </p>
+                ) : null}
+
+                {/* What this seller actually earns, kept apart from the above. */}
+                <div className="flex justify-between gap-3 border-border border-t pt-2 text-xs">
+                  <span className="text-secondary-text">
+                    Your payout after{" "}
+                    {formatMoney(order.commissionCents, PLATFORM_CURRENCY)}{" "}
+                    commission
+                  </span>
+                  <span className="tabular font-medium">
+                    {formatMoney(order.payoutCents, PLATFORM_CURRENCY)}
+                  </span>
+                </div>
+              </section>
+            ) : null}
 
             {/* Formatted as a shipping label, because that is what it is for. */}
             <address className="not-italic text-secondary-text text-xs leading-relaxed sm:text-right">

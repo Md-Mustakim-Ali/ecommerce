@@ -214,12 +214,30 @@ export async function listOrdersForStore(
       payoutCents: subOrders.payoutCents,
       trackingCarrier: subOrders.trackingCarrier,
       trackingNumber: subOrders.trackingNumber,
+      orderId: orders.id,
       orderNumber: orders.orderNumber,
       orderStatus: orders.status,
       buyerEmail: orders.email,
       buyerPhone: orders.contactPhone,
       shippingAddress: orders.shippingAddress,
       placedAt: orders.placedAt,
+      commissionCents: subOrders.commissionCents,
+      /*
+        The payment facts, which the queue had none of.
+
+        A seller could not tell a cash-on-delivery order from a prepaid one, or
+        a paid order from one still waiting for money — and those are different
+        decisions about whether to put something in a box. `orderStatus` alone
+        does not answer it: a COD order sits `pending` by design and is
+        perfectly safe to ship, while a bKash order sitting `pending` means
+        nobody has paid.
+      */
+      paymentMethod: orders.paymentMethod,
+      paymentIntentId: orders.paymentIntentId,
+      /** When the buyer proved their contact. Null when they never had to. */
+      confirmedAt: orders.confirmedAt,
+      /** The whole order, which on a multi-seller order is not this part. */
+      orderTotalCents: orders.totalCents,
     })
     .from(subOrders)
     .innerJoin(orders, eq(orders.id, subOrders.orderId))
@@ -271,12 +289,48 @@ export async function listOrdersForStore(
         .groupBy(orderNotes.subOrderId)
     : [];
 
+  /*
+    Every transfer behind these orders.
+
+    Read from our own rows rather than from Jomma: a seller opening their queue
+    must not depend on a payment provider being reachable, and these were
+    written from Jomma's own reports anyway.
+
+    Attached per ORDER, not per sub-order, and deliberately so. A buyer pays for
+    the whole cart in one transfer, so on a two-seller order both sellers see
+    the same payment — because both are looking at the same money. What each is
+    owed out of it is their own `payoutCents`, which is a different question and
+    already on the row.
+  */
+  const orderIds = [...new Set(rows.map((row) => row.orderId))];
+  const transfers = orderIds.length
+    ? await db
+        .select({
+          orderId: jommaAppliedPayments.orderId,
+          trxId: jommaAppliedPayments.trxId,
+          senderMsisdn: jommaAppliedPayments.senderMsisdn,
+          amountCents: jommaAppliedPayments.amountCents,
+          occurredAt: jommaAppliedPayments.occurredAt,
+          appliedAt: jommaAppliedPayments.appliedAt,
+          matchedBy: jommaAppliedPayments.matchedBy,
+        })
+        .from(jommaAppliedPayments)
+        .where(inArray(jommaAppliedPayments.orderId, orderIds))
+        .orderBy(asc(jommaAppliedPayments.appliedAt))
+    : [];
+
   return rows.map((row) => {
     const notes = noteCounts.find((entry) => entry.subOrderId === row.id);
+    const paid = transfers.filter((t) => t.orderId === row.orderId);
+    const receivedCents = paid.reduce((sum, t) => sum + t.amountCents, 0);
     return {
       ...row,
       noteCount: notes?.total ?? 0,
       unreadFromBuyer: notes?.unread ?? 0,
+      transfers: paid,
+      /** Against the WHOLE order, which on a split order is not this part. */
+      receivedCents,
+      outstandingCents: Math.max(0, row.orderTotalCents - receivedCents),
       items: items
         .filter((item) => item.order_items.subOrderId === row.id)
         .map((item) => item.order_items),

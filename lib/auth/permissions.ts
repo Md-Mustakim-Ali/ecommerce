@@ -132,6 +132,13 @@ const STORE_PERMISSIONS = [
     description: "Start a refund. Money only moves once an admin approves.",
   },
   {
+    key: "order.payment.view",
+    group: "Orders",
+    label: "See payment details",
+    description:
+      "See how an order was paid: the amounts received, the number the money came from, and each transaction id.",
+  },
+  {
     key: "order.note",
     group: "Orders",
     label: "Add order notes",
