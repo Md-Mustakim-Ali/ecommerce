@@ -116,7 +116,24 @@ If a seller's part of an order is refunded after they have been paid,
 `recordOrderReversed` reverses the ledger and the store shows a negative
 balance — but nothing collects it, and a store that never trades again keeps it.
 
-**f. Overpayment has no operator record.**
+**f. Cash on delivery cannot be recorded as paid — deferred on purpose.**
+Every route to `recordOrderPaid` is a webhook, the Jomma poll, or the dev-only
+demo button, so on production a COD order can never reach `paid`. Cash handed
+over at the door never enters the ledger, never credits the seller and never
+reaches a payout.
+
+**Decided 2026-09-10: do not build a manual "cash collected" button.** A parcel
+company's API is coming, and delivery *is* the collection event for COD — that
+integration is the natural place for it, and a hand-operated button built now
+would be thrown away or, worse, left as a second way to settle an order.
+
+Worth knowing when that work starts: it collides with everything above. Cash is
+collected per parcel, per seller, on different days, while `recordOrderPaid`
+settles a whole order at once. A two-seller COD order is two couriers and two
+amounts, so the courier integration will need money to move at sub-order level
+— which is the same shape change per-seller Jomma businesses would want.
+
+**g. Overpayment has no operator record.**
 `ORD-2026-000016` was overpaid by ৳11. The buyer's page says "We owe you back
 ৳11.00"; our only trace is a `console.warn` in
 [app/api/webhooks/jomma/route.ts](../app/api/webhooks/jomma/route.ts). No
