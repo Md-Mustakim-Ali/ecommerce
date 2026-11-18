@@ -80,13 +80,28 @@ jobs:
     timeout-minutes: 8
     steps:
       - name: Check configuration
+        id: config
         env:
           APP_URL: ${{ vars.APP_URL }}
           SWEEP_SECRET: ${{ secrets.MEDIA_SWEEP_SECRET }}
+          # Only to tell "never set" apart from "set in the wrong place" — see
+          # below. Never used as the target.
+          APP_URL_AS_SECRET: ${{ secrets.APP_URL }}
         run: |
           # Explicit ifs rather than `[ -z "$X" ] && missing=…`. That form
           # returns non-zero when the variable IS set, and under the default
           # `bash -e` it fails the step the moment it becomes the last line.
+
+          # The mistake this actually catches in practice. GitHub keeps
+          # Variables and Secrets on the same settings page, one above the
+          # other, and APP_URL was put in Secrets — where `vars.APP_URL` cannot
+          # see it. The old message said only "missing", which is true and
+          # unhelpful when you are looking straight at a row labelled APP_URL.
+          if [ -z "$APP_URL" ] && [ -n "$APP_URL_AS_SECRET" ]; then
+            echo "::error::APP_URL is set as a *secret*, but this workflow reads it as a *variable*. Move it: Settings → Secrets and variables → Actions → Variables tab → New repository variable. It is a public URL, so it does not belong in Secrets anyway — and as a variable it is visible in the log when a run fails."
+            exit 1
+          fi
+
           missing=""
           if [ -z "$APP_URL" ]; then
             missing="$missing APP_URL(variable)"
@@ -130,11 +145,18 @@ jobs:
                --write-out '\nHTTP %{http_code} in %{time_total}s\n' \
                "$APP_URL/api/media/sweep?limit=$LIMIT"
 
-      # `always()`, so a failing media sweep does not silently stop orders from
-      # being released. They share nothing but a bearer token, and one being
-      # broken is no reason to let abandoned checkouts hold stock indefinitely.
+      # Runs even when the media sweep failed, because they share nothing but a
+      # bearer token and one being broken is no reason to let abandoned
+      # checkouts hold stock indefinitely.
+      #
+      # But NOT when the configuration check failed. `always()` alone did that,
+      # and the result was a run reporting two errors for one problem: the
+      # honest "APP_URL is missing", then `curl: (3) URL rejected: No host part
+      # in the URL` from this step firing at an empty string. The second is
+      # noise that buries the first — there is nothing to call, and saying so
+      # twice in different words helps nobody.
       - name: Sweep unconfirmed orders
-        if: always()
+        if: always() && steps.config.outcome == 'success'
         env:
           APP_URL: ${{ vars.APP_URL }}
           SWEEP_SECRET: ${{ secrets.MEDIA_SWEEP_SECRET }}
