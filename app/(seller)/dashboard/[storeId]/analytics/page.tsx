@@ -231,6 +231,13 @@ export default async function StoreAnalyticsPage({
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h1 className="font-semibold text-xl tracking-tight">Analytics</h1>
+          {/* The heat grids live on their own page; this is the way in. */}
+          <Link
+            href={`/dashboard/${storeId}/analytics/heat`}
+            className="text-accent-text text-sm hover:underline"
+          >
+            Heat map →
+          </Link>
           <p className="text-secondary-text text-sm">
             {store.name} · last {days} days
           </p>
